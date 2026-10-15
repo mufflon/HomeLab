@@ -1,8 +1,8 @@
 # HomeLab
 
-This is the infrastructure-as-code for one person's home server, a small
-machine called `minisforum`. It describes what runs on it, why it is set up
-the way it is, and how to rebuild all of it from scratch.
+This is the infrastructure-as-code for one person's home server: a small
+machine in a closet called `minisforum`. It describes what runs on it, why
+it is set up the way it is, and how to rebuild all of it from scratch.
 
 It's public because there's no reason for it not to be. You're welcome to
 read it or borrow from it. Nothing here is a product, though: it's tuned to
