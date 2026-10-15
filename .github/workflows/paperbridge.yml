@@ -1,0 +1,68 @@
+# paperbridge: run its tests on every push that touches it. On a vX.Y.Z tag, also build it for
+# linux/amd64 and publish ghcr.io/mufflon/paperbridge:X.Y.Z. The version lives only in
+# services/paperbridge/pyproject.toml; the tag must match it.
+name: paperbridge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - services/paperbridge/**
+      - .github/workflows/paperbridge.yml
+    tags: ['v*']                 # path filters don't apply to tags
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/paperbridge
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - run: pip install -e '.[test]'
+      - run: pytest -q
+
+  image:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: version
+        run: |
+          version=$(sed -nE 's/^version = "([^"]+)"$/\1/p' services/paperbridge/pyproject.toml)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match pyproject.toml version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: services/paperbridge
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/paperbridge:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.description=paperbridge: Karakeep to Zotero handoff, from mufflon/HomeLab

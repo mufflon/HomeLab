@@ -17,13 +17,18 @@ val() {
     | sed -E 's/[[:space:]]+#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//' || true
 }
 
-# secret NAMESPACE NAME SECRET_KEY=ENV_KEY ...
+# secret NAMESPACE NAME SECRET_KEY=ENV_KEY ...   (ENV_KEY? = optional: left out of the Secret if empty)
 secret() {
-  local ns=$1 name=$2 file="$TMP/$1.$2.env" pair v missing=""
+  local ns=$1 name=$2 file="$TMP/$1.$2.env" pair src v missing=""
   shift 2
+  : > "$file"
   for pair in "$@"; do
-    v=$(val "${pair#*=}")
-    [[ -n $v ]] || missing="$missing ${pair#*=}"
+    src=${pair#*=}
+    v=$(val "${src%\?}")
+    if [[ -z $v ]]; then
+      [[ $src == *\? ]] || missing="$missing $src"
+      continue
+    fi
     printf '%s=%s\n' "${pair%%=*}" "$v" >> "$file"
   done
   if [[ -n $missing ]]; then echo "skip  $ns/$name (not set yet:$missing)"; return; fi
@@ -44,3 +49,9 @@ secret research zotero-webdav \
 # Karakeep + its Meilisearch (k8s/research/karakeep): session secret and the index master key.
 secret research karakeep \
   NEXTAUTH_SECRET=KARAKEEP_NEXTAUTH_SECRET MEILI_MASTER_KEY=MEILI_MASTER_KEY
+
+# paperbridge (k8s/research/paperbridge): Karakeep and Zotero API keys, optional Unpaywall email.
+# It reads the WebDAV login from the zotero-webdav Secret above.
+secret research paperbridge \
+  KARAKEEP_API_KEY=KARAKEEP_API_KEY ZOTERO_USER_ID=ZOTERO_USER_ID ZOTERO_API_KEY=ZOTERO_API_KEY \
+  UNPAYWALL_EMAIL=UNPAYWALL_EMAIL?

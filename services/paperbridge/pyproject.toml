@@ -1,0 +1,22 @@
+[project]
+name = "paperbridge"
+# The only place the version lives. A matching vX.Y.Z tag publishes ghcr.io/mufflon/paperbridge:X.Y.Z
+# (.github/workflows/paperbridge.yml).
+version = "0.1.0"
+description = "Hands papers bookmarked in Karakeep over to Zotero, PDFs via Zotero's WebDAV storage"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = ["httpx==0.28.1"]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+[project.scripts]
+paperbridge = "paperbridge.__main__:main"
+
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
