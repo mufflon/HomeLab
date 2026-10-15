@@ -27,7 +27,7 @@ secret() {
     printf '%s=%s\n' "${pair%%=*}" "$v" >> "$file"
   done
   if [[ -n $missing ]]; then echo "skip  $ns/$name (not set yet:$missing)"; return; fi
-  kubectl get namespace "$ns" >/dev/null 2>&1 || kubectl create namespace "$ns" >/dev/null
+  kubectl get namespace "$ns" >/dev/null 2>&1 || kubectl create namespace "$ns" --save-config >/dev/null
   kubectl -n "$ns" create secret generic "$name" --from-env-file="$file" --dry-run=client -o yaml \
     | kubectl apply --server-side --field-manager=secrets-sh -f - >/dev/null
   echo "ok    $ns/$name"
@@ -36,3 +36,7 @@ secret() {
 # lego (k8s/ingress): Let's Encrypt account email + LoopiaAPI credentials for DNS-01.
 secret ingress lego-credentials \
   LEGO_EMAIL=ACME_EMAIL LOOPIA_API_USER=LOOPIA_API_USER LOOPIA_API_PASSWORD=LOOPIA_API_PASSWORD
+
+# Zotero WebDAV (k8s/research/zotero-webdav): the one WebDAV login.
+secret research zotero-webdav \
+  WEBDAV_USERNAME=ZOTERO_WEBDAV_USER WEBDAV_PASSWORD=ZOTERO_WEBDAV_PASSWORD

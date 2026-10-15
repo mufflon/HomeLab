@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zotero-webdav
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # one ReadWriteOnce local volume
+  selector:
+    matchLabels:
+      app: zotero-webdav
+  template:
+    metadata:
+      labels:
+        app: zotero-webdav
+    spec:
+      securityContext:
+        runAsUser: 10001      # owner of hddpool/k8s/zotero-webdav (host/00-prep.sh)
+        runAsGroup: 10001
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: webdav
+          image: ghcr.io/hacdias/webdav:v5.17.1
+          args: [-c, /config/config.yml]
+          ports:
+            - {name: http, containerPort: 6065}
+          env:
+            - name: WEBDAV_USERNAME
+              valueFrom: {secretKeyRef: {name: zotero-webdav, key: WEBDAV_USERNAME}}
+            - name: WEBDAV_PASSWORD
+              valueFrom: {secretKeyRef: {name: zotero-webdav, key: WEBDAV_PASSWORD}}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: config, mountPath: /config, readOnly: true}
+          readinessProbe:
+            tcpSocket: {port: http}   # HTTP probes would get 401 without credentials
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: http}
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: zotero-webdav
+        - name: config
+          configMap:
+            name: zotero-webdav

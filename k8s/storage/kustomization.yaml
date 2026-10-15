@@ -6,3 +6,4 @@ kind: Kustomization
 resources:
   - storageclass.yaml
   - pv-certs.yaml
+  - pv-zotero-webdav.yaml

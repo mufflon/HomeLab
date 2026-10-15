@@ -1,0 +1,11 @@
+# WebDAV file storage for Zotero (hacdias/webdav). One user, from the zotero-webdav Secret
+# (scripts/secrets.sh). Zotero desktop: Settings -> Sync -> File Syncing -> WebDAV,
+# URL https://zotero-dav.home.threadsafe.se/ (Zotero appends zotero/ itself).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - pvc.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml

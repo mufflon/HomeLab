@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zotero-webdav
+data:
+  config.yml: |
+    address: 0.0.0.0
+    port: 6065
+    prefix: /
+    behindProxy: true          # Traefik in front: log the client from X-Forwarded-For
+    directory: /data           # dataset root; Zotero uses the zotero/ folder inside it
+    permissions: CRUD
+    log:
+      format: console
+      colors: false
+      outputs: [stderr]
+    users:
+      # Plain password from the Secret, not bcrypt: it is checked on every request,
+      # and Zotero syncs make many requests.
+      - username: "{env}WEBDAV_USERNAME"
+        password: "{env}WEBDAV_PASSWORD"

@@ -1,0 +1,7 @@
+# The research stack: Karakeep, Zotero's WebDAV, translation-server, paperbridge (see CLAUDE.md).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: research
+resources:
+  - namespace.yaml
+  - zotero-webdav

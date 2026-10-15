@@ -46,7 +46,17 @@ service must authenticate on its own.
   - The kubeconfig is `~/.kube/homelab` on the workstation.
   - Leftover: lego's staging account and certificate under
     `/data/letsencrypt-staging` on the certs dataset. Harmless.
-- **Next: step 2, zotero-webdav.**
+- **Step 2, zotero-webdav: deployed and tested with curl from the LAN**
+  (2026-10-16).
+  - `401` without a login or with a wrong one.
+  - `PROPFIND` returns `207`, and `zotero/` exists.
+  - A missing `.prop` returns `404`.
+  - PUT, GET and DELETE work; a 20 MB round trip took about 1 s with
+    matching checksums.
+  - `DAV: 1, 2`.
+  - Still to do: the owner's check in Zotero desktop ("Verify Server" plus
+    a real attachment sync).
+- **Next: step 3, translation-server.**
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
@@ -260,7 +270,11 @@ are in `ingress`.
 | chrome | `ghcr.io/karakeep-app/karakeep-chrome` (runs as 65534) | ClusterIP only | none |
 | paperbridge | built from `services/paperbridge`, published to ghcr.io | CronJob, no ingress | small state |
 
-**Zotero WebDAV.** One user, basic auth with a bcrypt-hashed password,
+**Zotero WebDAV.** One user, basic auth, password read from the Secret
+through `{env}`. It is plain rather than bcrypt because the server checks
+it on every request, and the extra protection only matters once the
+cluster is already compromised (the owner's bar is "sturdy, not
+maximally hardened"),
 HTTPS only. Zotero desktop: Settings → Sync → File Syncing → WebDAV, URL
 `https://zotero-dav.home.threadsafe.se/`. Zotero appends `zotero/` itself,
 and that directory already exists. Zotero on mobile works at home, or over

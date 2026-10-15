@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: zotero-webdav
+spec:
+  ingressClassName: public
+  tls:
+    - hosts: [zotero-dav.home.threadsafe.se]   # no secretName: Traefik's default wildcard certificate
+  rules:
+    - host: zotero-dav.home.threadsafe.se
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: zotero-webdav
+                port: {name: http}
