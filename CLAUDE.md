@@ -19,9 +19,17 @@ LAN or the internet.
 
 ## Status
 
-2026-10-15: repo initialized, no commits yet. `host/00-prep.sh`
-(build step 0) is written and syntax-checked but **not run yet**. Nothing
-is deployed: the cluster is a fresh, empty, healthy MicroK8s 1.36.
+2026-10-15: build step 0 is half done.
+
+- **Host part: done.** `host/00-prep.sh` has run on the server.
+  - `hddpool/k8s` and its children `zotero-webdav`, `karakeep` and
+    `meilisearch` exist with `lz4` compression and `atime=off`, owned as
+    listed under Storage.
+  - `zotero-webdav/zotero/` exists.
+  - sanoid has taken the first snapshots of `zotero-webdav` and
+    `karakeep`, and `sanoid.timer` is active.
+- **Tailscale admin-console part: not done** (owner's task).
+- Nothing is deployed: the cluster is a fresh, empty, healthy MicroK8s 1.36.
 
 ## Hard rules
 
