@@ -1,21 +1,146 @@
 # HomeLab
 
-Everything needed to rebuild the home server `minisforum` and its Kubernetes
-services from scratch. Secrets are the one exception: their names are in
-`.env.example`, and their values live only in your local `.env`.
+This is the infrastructure-as-code for one person's home server, a small
+machine called `minisforum`. It describes what runs on it, why it is set up
+the way it is, and how to rebuild all of it from scratch.
 
-The first stack is a research pipeline:
+It's public because there's no reason for it not to be. You're welcome to
+read it or borrow from it. Nothing here is a product, though: it's tuned to
+one home network, one server and one person's reading habits.
 
-- **Karakeep**, the bookmark register.
-- **Zotero** with our own **WebDAV** file storage.
-- **paperbridge**, the glue that hands papers from Karakeep to Zotero.
+> **Status:** early. The host is prepared, but most services are designed
+> and not yet deployed. Steps marked *(planned)* below don't exist in the
+> repo yet. The detailed, current state is in the "Status" section of
+> [CLAUDE.md](CLAUDE.md).
 
-Services are reachable on the home LAN only, under `*.home.threadsafe.se`
-with a Let's Encrypt certificate. Remote access is the router's VPN. The
-server itself runs no VPN.
+## What it's for
 
-Design and rules are in [CLAUDE.md](CLAUDE.md). Build status is in its
-"Status" section. Steps marked *(planned)* below are not in the repo yet.
+The first stack is a **research and reading pipeline**. It solves three
+annoyances:
+
+1. **Saving and reading happen in different places.** Articles, blog posts
+   and papers get saved from everywhere. [Karakeep](https://karakeep.app),
+   a self-hosted bookmark manager, is the single inbox for all of it. It
+   keeps an archived copy of each page, makes everything searchable, and is
+   the *register*: the one place to ask "what have I saved, and have I
+   read it?".
+2. **Papers deserve a proper reference manager.**
+   [Zotero](https://www.zotero.org) is where papers get read, highlighted
+   and cited. Zotero's own file storage is small on the free plan, so PDFs
+   are stored at home on a WebDAV server. Only the library metadata (titles,
+   authors, notes, highlights) syncs through zotero.org.
+3. **Moving papers between the two by hand is tedious.** *paperbridge* (a
+   working name) is a small service written here:
+   - A bookmark tagged `paper` in Karakeep becomes a complete Zotero item,
+     with metadata looked up automatically and the PDF placed in Zotero's
+     storage.
+   - When a paper is marked read in Zotero, that flows back to Karakeep.
+
+A side benefit: everything lives at home, as plain files on our own disks.
+And because Karakeep keeps the full text, an AI assistant can read saved
+papers through Karakeep's MCP server.
+
+## How it fits together
+
+```mermaid
+flowchart LR
+  subgraph clients["Your devices"]
+    browser["Browser / Karakeep app"]
+    zotero["Zotero desktop / mobile"]
+  end
+
+  subgraph server["minisforum: single-node MicroK8s"]
+    direction TB
+    traefik["Traefik ingress<br/>HTTPS *.home.threadsafe.se"]
+    karakeep["Karakeep"]
+    dav["WebDAV<br/>(Zotero's PDFs)"]
+    meili["Meilisearch"]
+    chrome["Headless Chrome"]
+    bridge["paperbridge<br/>(CronJob)"]
+    ts["Zotero translation-server"]
+    lego["lego<br/>(CronJob)"]
+    zfs[("ZFS datasets<br/>+ snapshots")]
+  end
+
+  subgraph internet["Outbound only"]
+    zoteroorg["zotero.org<br/>(library metadata)"]
+    le["Let's Encrypt"]
+    loopia["Loopia DNS API"]
+  end
+
+  browser --> traefik
+  zotero --> traefik
+  traefik --> karakeep
+  traefik --> dav
+  karakeep --> meili
+  karakeep --> chrome
+  bridge --> karakeep
+  bridge --> dav
+  bridge --> ts
+  bridge --> zoteroorg
+  zotero --> zoteroorg
+  lego --> le
+  lego --> loopia
+  lego -. "wildcard certificate" .-> traefik
+  karakeep -.- zfs
+  dav -.- zfs
+```
+
+Only Traefik is reachable from the LAN. Everything else is cluster-internal.
+The only things that leave the house are outbound calls: zotero.org for
+library sync, and Let's Encrypt plus Loopia's API for certificates.
+
+## Design choices, and why
+
+- **LAN-only, with the router's VPN for remote access.**
+  - The router already runs a VPN, and a VPN client lands on the LAN like
+    any other machine. So the server runs no VPN of its own, and nothing is
+    port-forwarded.
+  - The flip side is that "on the LAN" is not a security boundary. Every
+    exposed service has its own login, and internal services are not
+    exposed at all.
+- **Real HTTPS without exposing anything.**
+  - Services get names under `*.home.threadsafe.se`, a public DNS record
+    that points at the server's private LAN address. The names work
+    everywhere, but they lead nowhere unless you're on the LAN.
+  - [lego](https://go-acme.github.io/lego/) gets a Let's Encrypt wildcard
+    certificate through a **DNS-01** challenge. It proves ownership by
+    creating a temporary TXT record through Loopia's API, so Let's Encrypt
+    never has to connect to the server.
+  - The wildcard keeps individual service names out of the public
+    certificate logs.
+  - The usual tool, cert-manager, was skipped: its only Loopia integration
+    is unmaintained since 2021.
+- **Single-node [MicroK8s](https://microk8s.io).** It's one machine, so
+  there's no high availability to pretend at. Kubernetes still earns its
+  place: every service is declared in files, isolated, restartable, and
+  rebuilt with one command. MicroK8s is a single snap with the cluster DNS,
+  networking and ingress (Traefik) as addons.
+- **Data on ZFS, not on the system disk.**
+  - Each service's data is its own dataset on a raidz1 pool of four disks,
+    with automatic snapshots (hourly, daily, monthly) by
+    [sanoid](https://github.com/jimsalterjrs/sanoid).
+  - This machine has a history of hard power-offs. Once, an ext4 file was
+    left empty by one of them, which quietly broke the original cluster
+    for months. ZFS's copy-on-write design doesn't produce half-written
+    files like that.
+- **The repo is the rebuild recipe.** Host setup is idempotent scripts.
+  Everything in the cluster is plain Kubernetes manifests, applied with a
+  single `kubectl apply -k k8s/`. We add no Helm charts, operators or CRDs
+  of our own. Secrets are the one thing outside git: their names are in
+  `.env.example`, and their values in a local `.env`.
+
+## What's in the repo
+
+| Path | What it is |
+|---|---|
+| `README.md` | This file: purpose, design, how to rebuild |
+| `CLAUDE.md` | The detailed spec and working notes. [Claude Code](https://claude.com/claude-code), the AI coding assistant this was built with, reads it at the start of every session. It has the exact versions, UIDs, gotchas and open questions. Worth reading for the "how exactly" |
+| `host/` | Idempotent scripts run once on the server with sudo (storage, MicroK8s) |
+| `k8s/` | Kubernetes manifests, one directory per area *(planned)* |
+| `scripts/` | Helpers run from your machine, e.g. `.env` → Kubernetes Secrets *(planned)* |
+| `services/paperbridge/` | The glue service's source and container build *(planned)* |
+| `.env.example` | Every secret the setup needs, by name only |
 
 ## Prerequisites (outside this repo)
 

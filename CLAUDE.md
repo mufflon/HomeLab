@@ -57,6 +57,13 @@ service must authenticate on its own.
   is made by hand while debugging, the file follows in the same change.
   README's "Rebuild" section must always match reality, including its
   *(planned)* markers.
+- **README.md is for humans; CLAUDE.md is the working spec.**
+  - The README explains purpose, how the pieces fit (including its
+    Mermaid diagram), and the *why* behind design choices. It is written
+    for a curious stranger, or the owner years later.
+  - When a design decision or component changes, update the README's
+    explanation and diagram in the same change.
+  - Keep exact versions, UIDs and gotchas in CLAUDE.md, not in the README.
 - **This repo is public.** Never commit:
   - secrets, API keys, or Loopia API credentials;
   - the ACME account email;
