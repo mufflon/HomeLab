@@ -9,7 +9,9 @@ runs in Kubernetes. The first stack is a research pipeline:
   articles, pages, papers.
 - **Zotero** is where papers are read and annotated. Library data
   (metadata, notes, annotations) syncs through zotero.org; PDF files sync
-  through our own **WebDAV** server, not Zotero's storage.
+  through our own **WebDAV** server, not Zotero's storage. The owner does
+  **not** add PDFs to Zotero by hand. Papers and their PDFs arrive through
+  paperbridge, and Zotero presents what Karakeep gathered.
 - **paperbridge** (working name) is the one glue service between the two.
   It hands papers from Karakeep to Zotero and syncs reading status back,
   so Karakeep stays the register.
@@ -54,8 +56,9 @@ service must authenticate on its own.
   - PUT, GET and DELETE work; a 20 MB round trip took about 1 s with
     matching checksums.
   - `DAV: 1, 2`.
-  - Still to do: the owner's check in Zotero desktop ("Verify Server" plus
-    a real attachment sync).
+  - Zotero desktop: "Verify Server" succeeded. A real attachment synced up
+    as a `.zip` plus a `.prop`; it was a test, deleted afterwards. Its
+    format is recorded under paperbridge, step 4.
 - **Next: step 3, translation-server.**
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
@@ -305,6 +308,13 @@ version for incremental sync.
    WebDAV-stored files are meant for desktop clients, not the API or web
    library (forums.zotero.org/discussion/comment/393726). The format is
    undocumented but simple. Reference implementation: `zotkit` on PyPI.
+   Observed from a real Zotero desktop upload on 2026-10-16:
+   - `<KEY>.zip` is a plain zip holding the file under its original name
+     (e.g. `databehov.pdf`).
+   - `<KEY>.prop` is one line:
+     `<properties version="1"><mtime>1792105737901</mtime><hash>84c1…</hash></properties>`.
+     `mtime` is in milliseconds since the epoch. `hash` is the MD5 of the
+     **unzipped file**, not of the zip (verified by comparing both).
 5. **Back in Karakeep:** tag `in-zotero`, and add the Zotero item link to
    the bookmark's note.
 
@@ -423,7 +433,7 @@ it.
 - VPN clients resolve `*.home.threadsafe.se` to the LAN IP and reach it.
   The router itself was verified on 2026-10-16.
 - Karakeep rule engine: can a rule match on URL host (doi.org, arxiv.org)?
-- Zotero's `.prop` format, and whether desktop picks up a file paperbridge
+- Whether desktop picks up a file paperbridge
   wrote directly. Test with a real library before automating.
 - Zotero web API dedup by DOI: does quick search with `qmode=everything`
   match the DOI field, or do we need a local DOI index?
