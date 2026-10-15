@@ -286,8 +286,10 @@ Each step is done when it's deployed **and** verified from a LAN device
      the per-app child datasets and their ownership, and the sanoid policy
      plus timer.
    - Owner tasks:
-     - In Loopia Customer Zone → LoopiaAPI, create an API user allowed to
-       read, add and remove DNS records for `threadsafe.se`. Its
+     - In Loopia Customer Zone → LoopiaAPI, create an API user with only
+       `getZoneRecords`, `addZoneRecord`, `removeZoneRecord` and
+       `removeSubdomain`. These are exactly the methods lego's Loopia
+       client calls (checked in its source on 2026-10-16). Its
        credentials go in `.env`.
      - At Loopia, add an A record `*.home.threadsafe.se` → the server's
        LAN IP.
@@ -371,8 +373,8 @@ it.
   (`ingressRoute.dashboard.enabled`).
 - An Ingress with `tls.hosts` and no `secretName` gets the default
   TLSStore certificate.
-- lego's `loopia` provider: which LoopiaAPI permissions it needs, and its
-  DNS propagation timeout against Loopia's nameservers.
+- lego's `loopia` provider: its DNS propagation timeout against Loopia's
+  nameservers.
 - The router (and VPN clients) resolve `*.home.threadsafe.se` to the LAN
   IP. Watch for DNS rebind protection.
 - Karakeep rule engine: can a rule match on URL host (doi.org, arxiv.org)?

@@ -157,8 +157,10 @@ library sync, and Let's Encrypt plus Loopia's API for certificates.
 3. **DNS at Loopia, for `threadsafe.se`**
    - An A record `*.home.threadsafe.se` → the server's LAN address. It is
      public, but it points at a private IP.
-   - A LoopiaAPI user allowed to read, add and remove DNS records. It is
-     used for certificate renewal.
+   - A LoopiaAPI user for certificate renewal, with exactly these rights:
+     `getZoneRecords`, `addZoneRecord`, `removeZoneRecord`,
+     `removeSubdomain`. Nothing else: no domain, billing or DNS-server
+     rights.
 4. **Router**
    - The VPN server for remote access.
    - **No** port forwards to this server.
