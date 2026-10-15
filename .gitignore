@@ -1,0 +1,29 @@
+# Secrets: values live only in .env on the operator's machine (see CLAUDE.md, Hard rules)
+.env
+.env.*
+!.env.example
+*.secret.yaml
+secrets/
+
+# Kubeconfigs are cluster-admin credentials
+kubeconfig*
+*.kubeconfig
+.kube/
+
+# Logs copied back from host scripts
+*.log
+
+# Python (services/paperbridge)
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
