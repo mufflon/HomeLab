@@ -33,6 +33,9 @@ service must authenticate on its own.
     created yet**. Rerun the script; it is idempotent.
 - **Step 0, owner tasks:** not done. These are the Loopia API user, the
   wildcard A record and the router check (see Build order).
+- `host/01-microk8s.sh` (MicroK8s + hardened Traefik ingress) is written
+  but **not run yet**. MicroK8s itself is already installed.
+- README.md holds the prerequisites and the rebuild procedure.
 - Nothing is deployed: the cluster is a fresh, empty, healthy MicroK8s
   1.36.
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
@@ -40,6 +43,20 @@ service must authenticate on its own.
 
 ## Hard rules
 
+- **The repo is the rebuild recipe.** Anyone with this repo, the
+  prerequisites in README.md and a filled-in `.env` must be able to
+  rebuild everything. Every change to the server or cluster lands in a
+  file here, in the same commit:
+  - host steps as idempotent scripts in `host/`;
+  - cluster objects as manifests under `k8s/`, applied with one
+    `kubectl apply -k k8s/`;
+  - manual and owner steps in README.md's prerequisites or rebuild
+    steps.
+
+  No ad-hoc `kubectl edit`/`create`/`patch` that isn't captured. If a fix
+  is made by hand while debugging, the file follows in the same change.
+  README's "Rebuild" section must always match reality, including its
+  *(planned)* markers.
 - **This repo is public.** Never commit:
   - secrets, API keys, or Loopia API credentials;
   - the ACME account email;
@@ -53,7 +70,7 @@ service must authenticate on its own.
   public anyway (DNS and Certificate Transparency), so they may be
   committed.
 - **LAN only, and everything authenticates.**
-  - Services are `ClusterIP`. The only way in is the MicroK8s nginx
+  - Services are `ClusterIP`. The only way in is the MicroK8s Traefik
     ingress on ports 80/443 of the server, HTTPS only.
   - No `NodePort`, no `LoadBalancer`, no router port forwards.
   - Internal-only services (translation-server, Meilisearch, Chrome) get
@@ -96,11 +113,19 @@ Facts that matter when working here, verified 2026-10-15.
 
 ### Access: LAN ingress with a wildcard certificate
 
-- **Ingress.** The MicroK8s `ingress` addon (nginx) listens on the
-  server's ports 80/443. It is enabled with
-  `--default-ssl-certificate ingress/wildcard-home-tls`, so every Ingress
-  under `*.home.threadsafe.se` gets the wildcard certificate without its
-  own `tls` secret.
+- **Ingress.** The MicroK8s `ingress` addon is **Traefik** (chart 39.0.8,
+  Traefik v3.6), not ingress-nginx, which upstream retired in 2026. It runs
+  as a DaemonSet on host ports 80/443. `host/01-microk8s.sh` enables it
+  with `--default-ssl-certificate ingress/wildcard-home-tls`, which creates
+  Traefik's default `TLSStore`. The script then hardens it through a Helm
+  upgrade:
+  - The addon's values create an **unauthenticated dashboard** route on
+    `Host(dashboard.localhost)`. The script disables it.
+  - The script adds a **web → websecure** redirect.
+- **Writing Ingresses.** Use `ingressClassName: public` (the addon's
+  default class). Put a `tls: [{hosts: [<name>.home.threadsafe.se]}]`
+  entry **without** `secretName`, so Traefik serves the default wildcard
+  certificate.
 - **Names.** A public wildcard A record, `*.home.threadsafe.se`, points at
   the server's LAN IP. It is set at Loopia, so it resolves the same at
   home and over the router VPN, and it is useless from outside.
@@ -260,9 +285,14 @@ Each step is done when it's deployed **and** verified from a LAN device
      - At Loopia, add an A record `*.home.threadsafe.se` → the server's
        LAN IP.
      - Check that the router's DNS rebind protection doesn't block it.
-1. **Ingress and certificate.** Enable the ingress addon, run the lego
-   CronJob against Let's Encrypt staging and then production, and check
-   that a throwaway service shows a valid certificate on a LAN device.
+1. **Ingress and certificate.**
+   - Run `host/01-microk8s.sh` (Traefik addon plus hardening), and write
+     `scripts/secrets.sh`.
+   - Add `k8s/ingress/` (lego CronJob, RBAC, certs PV/PVC) and the root
+     `k8s/kustomization.yaml`.
+   - Run lego against Let's Encrypt staging, then production.
+   - Check that a throwaway service shows a valid certificate on a LAN
+     device, that the dashboard is gone and that HTTP redirects.
 2. **zotero-webdav**, verified with Zotero desktop's "Verify Server" and a
    real attachment round trip.
 3. **translation-server**, smoke-tested with one DOI and one arXiv ID.
@@ -276,11 +306,15 @@ Each step is done when it's deployed **and** verified from a LAN device
 
 ```
 CLAUDE.md
+README.md                 # prerequisites + rebuild procedure
 .env.example              # secret names only
 .gitignore                # .env, kubeconfig*, *.secret.yaml
-host/                     # one-off host scripts: zfs datasets, sanoid
+host/
+  00-prep.sh              # ZFS datasets + sanoid
+  01-microk8s.sh          # MicroK8s + hardened Traefik ingress addon
 k8s/
-  ingress/                # lego CronJob, RBAC, certs PV/PVC, addon notes
+  kustomization.yaml      # root: kubectl apply -k k8s/ rebuilds everything
+  ingress/                # lego CronJob, RBAC, certs PV/PVC
   research/
     kustomization.yaml    # namespace, storage, and the apps below
     storage.yaml          # StorageClass zfs-local + PVs
@@ -293,8 +327,11 @@ services/paperbridge/     # Python package + Dockerfile
 .github/workflows/
 ```
 
-Kustomize, applied by hand: `kubectl apply -k k8s/<dir>`. No Helm charts
-and no Flux until there are enough services to justify them.
+Kustomize, applied by hand: `kubectl apply -k k8s/` applies everything,
+and `kubectl apply -k k8s/<dir>` applies a single part. We use no Helm
+charts or CRDs of our own; Traefik comes in through the MicroK8s addon in
+`host/01-microk8s.sh`. No Flux until there are enough services to justify
+it.
 
 ## Working on the server
 
@@ -320,6 +357,13 @@ and no Flux until there are enough services to justify them.
 
 ## Verify before relying on
 
+- `microk8s enable ingress -V … --default-ssl-certificate …` passes both
+  flags through to the addon (no `--` needed).
+- Traefik chart 39 value names for the web → websecure redirect
+  (`ports.web.redirections.entryPoint.*`) and for the dashboard
+  (`ingressRoute.dashboard.enabled`).
+- An Ingress with `tls.hosts` and no `secretName` gets the default
+  TLSStore certificate.
 - lego's `loopia` provider: which LoopiaAPI permissions it needs, and its
   DNS propagation timeout against Loopia's nameservers.
 - The router (and VPN clients) resolve `*.home.threadsafe.se` to the LAN
