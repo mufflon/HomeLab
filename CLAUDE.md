@@ -96,6 +96,15 @@ Facts that matter when working here, verified 2026-10-15.
 - Minisforum AI-series: Ryzen AI 9 HX 470, Radeon 890M. 4 TB NVMe (ext4 on
   LVM, `/`) plus 4 × 4 TB HDD in ZFS raidz1 pool `hddpool` (~10 TB usable,
   scrubs clean).
+- **The four HDDs are in a USB enclosure** (JMicron JMS567 bridge, `uas`,
+  one USB 3 link). Every disk reports the same fake serial
+  `0123456789ABCDEF`, which is why the pool uses `sdX` names rather than
+  by-id paths. ZFS imports by its own labels, so that's harmless.
+  - The enclosure is a single point of failure. If it drops off the bus,
+    the pool suspends until it's reconnected.
+  - SMART pass-through is unverified.
+  - No USB resets were seen as of 2026-10-16. Still, ZFS is a better place
+    for data than the NVMe, which has no redundancy and no checksums.
 - Ubuntu 26.04.1 LTS, kernel 7.0 (upgraded from 24.04 on 2026-10-15).
   `sudo` is **sudo-rs**: no `-E`. MicroK8s wrappers print a warning about
   it. Harmless.
@@ -114,7 +123,10 @@ Facts that matter when working here, verified 2026-10-15.
     power loss), never on the ext4 root.
   - If containers fail with `exec format error`, suspect a truncated image
     layer: remove the image and pull it again.
-  - A UPS would remove the root cause.
+  - There **is** a UPS, but it doesn't signal the server (no USB link, no
+    NUT or apcupsd, checked 2026-10-16). It bridges short outages, but a
+    long one still ends in a hard power-off. Connecting it and running NUT
+    would make low-battery shutdowns clean. Not done yet.
 
 ## Architecture
 

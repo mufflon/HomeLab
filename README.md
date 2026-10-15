@@ -117,8 +117,9 @@ library sync, and Let's Encrypt plus Loopia's API for certificates.
   rebuilt with one command. MicroK8s is a single snap with the cluster DNS,
   networking and ingress (Traefik) as addons.
 - **Data on ZFS, not on the system disk.**
-  - Each service's data is its own dataset on a raidz1 pool of four disks,
-    with automatic snapshots (hourly, daily, monthly) by
+  - Each service's data is its own dataset on a raidz1 pool of four disks
+    (in a USB enclosure; a mini PC has no room inside), with automatic
+    snapshots (hourly, daily, monthly) by
     [sanoid](https://github.com/jimsalterjrs/sanoid).
   - This machine has a history of hard power-offs. Once, an ext4 file was
     left empty by one of them, which quietly broke the original cluster
@@ -168,9 +169,13 @@ library sync, and Let's Encrypt plus Loopia's API for certificates.
 5. **Accounts**
    - A Zotero account, and an API key with library read/write.
    - The Karakeep API key is created during the build (step 4).
-6. **Your machine**
-   - A clone of this repo, and `.env` filled in from `.env.example`.
-   - `kubectl`, or just SSH to the server and use `microk8s kubectl`.
+6. **Your machine** (the workstation you manage the cluster from, not the
+   server)
+   - A clone of this repo, with `.env` filled in from `.env.example`.
+     `.env` stays on this machine: it is gitignored, and the server never
+     stores it. `scripts/secrets.sh` sends the values into the cluster as
+     Secrets.
+   - `kubectl` within one minor version of the cluster.
 
 ## Rebuild
 
@@ -218,6 +223,9 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
 
 ## What this does not cover
 
+- **Clean shutdown on power loss.** There is a UPS, but it isn't connected
+  to the server, so a long outage still ends in a hard power-off. A USB
+  link plus NUT would fix that.
 - **Off-site backup.** sanoid snapshots live on the same pool, so they
   protect against mistakes, not against losing the pool. Off-site copies
   (e.g. `syncoid` to another machine) are not set up.
