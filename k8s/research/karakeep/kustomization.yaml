@@ -1,0 +1,12 @@
+# Karakeep (bookmark register) with its Meilisearch index and headless Chrome crawler.
+# Based on Karakeep's own kubernetes/ manifests (v0.33.2), pinned and on ZFS volumes.
+# Secrets: karakeep (NEXTAUTH_SECRET, MEILI_MASTER_KEY) from scripts/secrets.sh.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - configmap.yaml
+  - pvc.yaml
+  - web.yaml
+  - meilisearch.yaml
+  - chrome.yaml
+  - ingress.yaml

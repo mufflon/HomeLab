@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: karakeep
+spec:
+  storageClassName: zfs-local
+  volumeName: karakeep
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: meilisearch
+spec:
+  storageClassName: zfs-local
+  volumeName: meilisearch
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 100Gi

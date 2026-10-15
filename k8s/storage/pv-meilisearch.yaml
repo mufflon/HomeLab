@@ -1,0 +1,23 @@
+# hddpool/k8s/meilisearch: Meilisearch's index, rebuildable from Karakeep. Owned 10002:10002.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: meilisearch
+spec:
+  capacity:
+    storage: 100Gi      # informational for local volumes; the dataset has no quota
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: zfs-local
+  claimRef:
+    namespace: research
+    name: meilisearch
+  local:
+    path: /hddpool/k8s/meilisearch
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [minisforum]

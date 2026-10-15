@@ -1,0 +1,59 @@
+# Karakeep web app + background workers (one container; s6-overlay /init, runs as root).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: karakeep
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # one ReadWriteOnce volume with a SQLite database
+  selector:
+    matchLabels:
+      app: karakeep
+  template:
+    metadata:
+      labels:
+        app: karakeep
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/karakeep-app/karakeep:0.33.2@sha256:b069e4307dec06ea06d16989c6861c30a1ff208568be44ed5fb5d422cd3e950c
+          ports:
+            - {name: http, containerPort: 3000}
+          envFrom:
+            - configMapRef:
+                name: karakeep
+          env:
+            - name: NEXTAUTH_SECRET
+              valueFrom: {secretKeyRef: {name: karakeep, key: NEXTAUTH_SECRET}}
+            - name: MEILI_MASTER_KEY
+              valueFrom: {secretKeyRef: {name: karakeep, key: MEILI_MASTER_KEY}}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+          startupProbe:          # migrations on first start
+            tcpSocket: {port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket: {port: http}
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: http}
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 100m, memory: 512Mi}
+            limits: {memory: 3Gi}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: karakeep
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: karakeep
+spec:
+  selector:
+    app: karakeep
+  ports:
+    - {name: http, port: 3000, targetPort: http}

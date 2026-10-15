@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: karakeep
+data:
+  NEXTAUTH_URL: https://karakeep.home.threadsafe.se
+  DATA_DIR: /data
+  MEILI_ADDR: http://meilisearch:7700
+  BROWSER_WEB_URL: http://chrome:9222
+  # "false" only until the owner's account exists (first sign-up becomes admin), then "true".
+  DISABLE_SIGNUPS: "false"

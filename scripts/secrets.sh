@@ -40,3 +40,7 @@ secret ingress lego-credentials \
 # Zotero WebDAV (k8s/research/zotero-webdav): the one WebDAV login.
 secret research zotero-webdav \
   WEBDAV_USERNAME=ZOTERO_WEBDAV_USER WEBDAV_PASSWORD=ZOTERO_WEBDAV_PASSWORD
+
+# Karakeep + its Meilisearch (k8s/research/karakeep): session secret and the index master key.
+secret research karakeep \
+  NEXTAUTH_SECRET=KARAKEEP_NEXTAUTH_SECRET MEILI_MASTER_KEY=MEILI_MASTER_KEY

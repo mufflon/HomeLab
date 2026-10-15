@@ -1,0 +1,58 @@
+# Karakeep's search index. Version as pinned by Karakeep's own manifests (v1.41.0).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meilisearch
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: meilisearch
+  template:
+    metadata:
+      labels:
+        app: meilisearch
+    spec:
+      securityContext:
+        runAsUser: 10002      # owner of hddpool/k8s/meilisearch (host/00-prep.sh)
+        runAsGroup: 10002
+        runAsNonRoot: true
+      containers:
+        - name: meilisearch
+          image: getmeili/meilisearch:v1.41.0@sha256:860fa4baed04ae1c235de870edab0c8006227546dea1bbb6411fbfc5e27cf1db
+          ports:
+            - {name: http, containerPort: 7700}
+          env:
+            - {name: MEILI_ENV, value: production}     # require the master key
+            - {name: MEILI_NO_ANALYTICS, value: "true"}
+            - name: MEILI_MASTER_KEY
+              valueFrom: {secretKeyRef: {name: karakeep, key: MEILI_MASTER_KEY}}
+          volumeMounts:
+            - {name: data, mountPath: /meili_data}
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 50m, memory: 256Mi}
+            limits: {memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: meilisearch
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: meilisearch
+spec:
+  selector:
+    app: meilisearch
+  ports:
+    - {name: http, port: 7700, targetPort: http}

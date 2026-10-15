@@ -6,3 +6,4 @@ resources:
   - namespace.yaml
   - zotero-webdav
   - translation-server
+  - karakeep

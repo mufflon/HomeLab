@@ -7,3 +7,5 @@ resources:
   - storageclass.yaml
   - pv-certs.yaml
   - pv-zotero-webdav.yaml
+  - pv-karakeep.yaml
+  - pv-meilisearch.yaml

@@ -1,0 +1,42 @@
+# Headless Chrome that Karakeep's crawler drives. Args as in Karakeep's own manifests.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chrome
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chrome
+  template:
+    metadata:
+      labels:
+        app: chrome
+    spec:
+      containers:
+        - name: chrome
+          image: ghcr.io/karakeep-app/karakeep-chrome:154.0.8037.57-r1@sha256:c51a8c8e6c3c1040a50fa0ecfd0b2fc298401b4229262636552458151f6f18fa
+          args:
+            - --disable-gpu
+            - --disable-dev-shm-usage
+            - --hide-scrollbars
+            - --disable-blink-features=AutomationControlled
+            - --window-size=1440,900
+          ports:
+            - {name: devtools, containerPort: 9222}
+          readinessProbe:
+            tcpSocket: {port: devtools}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 50m, memory: 256Mi}
+            limits: {memory: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chrome
+spec:
+  selector:
+    app: chrome
+  ports:
+    - {name: devtools, port: 9222, targetPort: devtools}
