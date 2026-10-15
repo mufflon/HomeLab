@@ -59,7 +59,19 @@ service must authenticate on its own.
   - Zotero desktop: "Verify Server" succeeded. A real attachment synced up
     as a `.zip` plus a `.prop`; it was a test, deleted afterwards. Its
     format is recorded under paperbridge, step 4.
-- **Next: step 3, translation-server.**
+- **Step 3, translation-server: done** (2026-10-16).
+  - Docker Hub's 2.0.6 is arm64-only and fails on this amd64 server with
+    `exec format error`. We build our own image instead (see Components).
+  - Smoke-tested via port-forward:
+    - `/search 10.1038/nature14539` → *Deep learning*, Nature, journal
+      article;
+    - `/search arXiv:1706.03762` and `/web https://arxiv.org/abs/1706.03762`
+      → *Attention Is All You Need*, preprint.
+  - Gotcha for paperbridge: arXiv items carry the **latest version's**
+    date (2023-08-02 for v7), not the original submission date.
+- **Next: step 4, Karakeep + Meilisearch + Chrome.** Needs
+  `KARAKEEP_NEXTAUTH_SECRET` and `MEILI_MASTER_KEY` in `.env`; both can be
+  generated.
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
@@ -267,7 +279,7 @@ are in `ingress`.
 |---|---|---|---|
 | lego (CronJob) | `goacme/lego` + `alpine/kubectl` | none | `certs` |
 | zotero-webdav | `ghcr.io/hacdias/webdav` | `zotero-dav.home.threadsafe.se` | `zotero-webdav` |
-| translation-server | `zotero/translation-server` (pin by digest) | ClusterIP only | none |
+| translation-server | `ghcr.io/mufflon/translation-server`, built by our workflow from the commit in `images/translation-server/UPSTREAM_REF` (Docker Hub's is arm64-only), pinned by digest | ClusterIP `:1969` only | none |
 | karakeep | `ghcr.io/karakeep-app/karakeep` | `karakeep.home.threadsafe.se` | `karakeep` |
 | meilisearch | `getmeili/meilisearch:v1.41.0`, the version Karakeep's own manifests pin (newest upstream is v1.55) | ClusterIP only | `meilisearch` |
 | chrome | `ghcr.io/karakeep-app/karakeep-chrome` (runs as 65534) | ClusterIP only | none |
@@ -396,8 +408,9 @@ k8s/
     karakeep/
     paperbridge/
 scripts/secrets.sh        # .env → Kubernetes Secrets
+images/translation-server/  # UPSTREAM_REF: which upstream commit we build
 services/paperbridge/     # Python package + Dockerfile
-.github/workflows/
+.github/workflows/        # image builds → ghcr.io/mufflon/* (public, inherits repo visibility)
 ```
 
 Kustomize, applied by hand: `kubectl apply -k k8s/` applies everything,

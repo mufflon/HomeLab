@@ -141,7 +141,9 @@ library sync, and Let's Encrypt plus Loopia's API for certificates.
 | `host/` | Idempotent scripts run once on the server with sudo (storage, MicroK8s) |
 | `k8s/` | Kubernetes manifests, one directory per area: `storage/` (ZFS-backed volumes), `ingress/` (certificates). Apps *(planned)* |
 | `scripts/` | Helpers run from your machine: `secrets.sh` turns `.env` into Kubernetes Secrets |
+| `images/` | Third-party images we build ourselves, e.g. Zotero's translation-server, because the published one is ARM-only |
 | `services/paperbridge/` | The glue service's source and container build *(planned)* |
+| `.github/workflows/` | GitHub Actions that build those images and publish them to `ghcr.io/mufflon/*` |
 | `.env.example` | Every secret the setup needs, by name only |
 
 ## Prerequisites (outside this repo)
