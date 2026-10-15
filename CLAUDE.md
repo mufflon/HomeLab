@@ -14,38 +14,56 @@ runs in Kubernetes. The first stack is a research pipeline:
   It hands papers from Karakeep to Zotero and syncs reading status back,
   so Karakeep stays the register.
 
-Everything is reachable **only over Tailscale**. Nothing is exposed on the
-LAN or the internet.
+Services are reachable **on the home LAN only**, under
+`*.home.threadsafe.se`, over HTTPS with a Let's Encrypt wildcard
+certificate. Remote access is the **router's VPN**, which puts a client on
+the LAN like any local machine. There is **no VPN on the server** (no
+Tailscale, no WireGuard). Nothing is port-forwarded, so every exposed
+service must authenticate on its own.
 
 ## Status
 
-2026-10-15: build step 0 is half done.
+2026-10-15:
 
-- **Host part: done.** `host/00-prep.sh` has run on the server.
-  - `hddpool/k8s` and its children `zotero-webdav`, `karakeep` and
-    `meilisearch` exist with `lz4` compression and `atime=off`, owned as
-    listed under Storage.
-  - `zotero-webdav/zotero/` exists.
-  - sanoid has taken the first snapshots of `zotero-webdav` and
-    `karakeep`, and `sanoid.timer` is active.
-- **Tailscale admin-console part: not done** (owner's task).
-- Nothing is deployed: the cluster is a fresh, empty, healthy MicroK8s 1.36.
+- **Step 0, host part: mostly done.** `host/00-prep.sh` has run.
+  - `hddpool/k8s` with `zotero-webdav`, `karakeep` and `meilisearch`
+    exists, owned as listed under Storage.
+  - sanoid snapshots and its timer are active.
+  - The `certs` dataset was added to the script afterwards and is **not
+    created yet**. Rerun the script; it is idempotent.
+- **Step 0, owner tasks:** not done. These are the Loopia API user, the
+  wildcard A record and the router check (see Build order).
+- Nothing is deployed: the cluster is a fresh, empty, healthy MicroK8s
+  1.36.
+- An earlier design used Tailscale. It was dropped on 2026-10-15 because
+  the owner already has VPN on the router.
 
 ## Hard rules
 
-- **This repo is public.** Never commit secrets, Tailscale auth keys or
-  OAuth credentials, API keys, the tailnet name, or kubeconfigs (a MicroK8s
-  kubeconfig is a cluster-admin credential). Secrets live in a gitignored
-  `.env` on the operator's machine. `scripts/secrets.sh` turns them into
-  Kubernetes Secrets with `kubectl create secret … --dry-run=client -o yaml
-  | kubectl apply -f -`. `.env.example` lists the names, never values.
-- **No exposure outside the tailnet.** Services are `ClusterIP`. The only
-  way in is a Tailscale ingress. No `NodePort`, no `LoadBalancer`, no
-  router port forwards. Internal-only services (translation-server,
-  Meilisearch, Chrome) get no ingress at all.
+- **This repo is public.** Never commit:
+  - secrets, API keys, or Loopia API credentials;
+  - the ACME account email;
+  - kubeconfigs (a MicroK8s kubeconfig is a cluster-admin credential).
+
+  Secrets live in a gitignored `.env` on the operator's machine.
+  `scripts/secrets.sh` turns them into Kubernetes Secrets with
+  `kubectl create secret … --dry-run=client -o yaml | kubectl apply -f -`.
+  `.env.example` lists the names, never values. The domain
+  `home.threadsafe.se` and the fact that it points at a private IP are
+  public anyway (DNS and Certificate Transparency), so they may be
+  committed.
+- **LAN only, and everything authenticates.**
+  - Services are `ClusterIP`. The only way in is the MicroK8s nginx
+    ingress on ports 80/443 of the server, HTTPS only.
+  - No `NodePort`, no `LoadBalancer`, no router port forwards.
+  - Internal-only services (translation-server, Meilisearch, Chrome) get
+    no ingress at all.
+  - Every exposed service requires its own login with a strong password
+    or key. Nothing is anonymous "because it's only the LAN".
 - **Pinned images, newest releases.** No `:latest`. Bump deliberately and
   note why in the commit.
-- **Propose before git.** Commits and pushes happen when the owner says so.
+- **Git:** the owner allows committing and pushing freely. Scan the staged
+  diff for credentials, IPs and personal email before every push.
 
 ## The server
 
@@ -76,19 +94,42 @@ Facts that matter when working here, verified 2026-10-15.
 
 ## Architecture
 
-### Access: Tailscale Kubernetes operator
+### Access: LAN ingress with a wildcard certificate
 
-The Tailscale operator (Helm chart `tailscale/tailscale-operator`, pinned)
-runs in namespace `tailscale`. Every service we expose is an `Ingress`
-with `ingressClassName: tailscale`. It becomes its own tailnet device
-`<name>.<tailnet>.ts.net` with a valid HTTPS certificate. Manifests only
-contain the short name (`tls.hosts: [karakeep]`), never the tailnet name.
-Tailnet requirements: MagicDNS and HTTPS enabled, an OAuth client for the
-operator, tags `tag:k8s-operator` and `tag:k8s`, and ACLs that admit only
-the owner's devices.
+- **Ingress.** The MicroK8s `ingress` addon (nginx) listens on the
+  server's ports 80/443. It is enabled with
+  `--default-ssl-certificate ingress/wildcard-home-tls`, so every Ingress
+  under `*.home.threadsafe.se` gets the wildcard certificate without its
+  own `tls` secret.
+- **Names.** A public wildcard A record, `*.home.threadsafe.se`, points at
+  the server's LAN IP. It is set at Loopia, so it resolves the same at
+  home and over the router VPN, and it is useless from outside.
+  - Routers with "DNS rebind protection" block public names that point to
+    private IPs. If names don't resolve, allow `home.threadsafe.se` there.
+  - The wildcard keeps individual service names out of the public
+    Certificate Transparency logs.
+- **Certificates.** A CronJob in namespace `ingress` runs daily:
+  1. An init container `goacme/lego` (pinned) gets the certificate from
+     Let's Encrypt through a **DNS-01** challenge via LoopiaAPI. lego has
+     a built-in `loopia` provider. Let's Encrypt only checks a temporary
+     TXT record in public DNS and never connects to the server. The first
+     run uses `run`; later runs use `renew --days 30`.
+  2. The main container, `alpine/kubectl` pinned to the cluster's minor
+     version, writes the certificate into the Secret
+     `ingress/wildcard-home-tls`. Its ServiceAccount may only update that
+     one Secret.
 
-Remote `kubectl` also goes through the operator's API server proxy (`tailscale
-configure kubeconfig …`). Kubeconfigs stay on the operator's machine.
+  lego's account key and certificate live on the `certs` dataset, so runs
+  don't re-issue and hit Let's Encrypt rate limits. Use the Let's Encrypt
+  **staging** server until the flow works.
+
+  cert-manager was rejected: its only Loopia webhook was last released in
+  2021, on cert-manager v1.2.
+- **Changing domain.** To move to `wallindevelopment.se`, also at Loopia,
+  replace `home.threadsafe.se` in the manifests and create a Loopia API
+  user for that domain.
+- **Remote kubectl.** Use a kubeconfig from `microk8s config`, kept on the
+  operator's machine. The API server listens on the LAN at `:16443`.
 
 ### Storage: ZFS datasets as local PersistentVolumes
 
@@ -109,6 +150,7 @@ The child datasets are created once on the host with sudo:
 | `hddpool/k8s/zotero-webdav` | WebDAV server | yes |
 | `hddpool/k8s/karakeep` | Karakeep `DATA_DIR` (SQLite + assets) | yes |
 | `hddpool/k8s/meilisearch` | search index | no (rebuildable from Karakeep) |
+| `hddpool/k8s/certs` | lego account + certificates (private keys, mode 0700) | yes |
 
 Each one is a `local` PersistentVolume (StorageClass `zfs-local`,
 `kubernetes.io/no-provisioner`, `WaitForFirstConsumer`, node affinity to
@@ -121,6 +163,7 @@ the UID its app runs as. The manifests must set the same
 - **zotero-webdav:** 10001. The image runs as root by default; we run it
   as non-root.
 - **meilisearch:** 10002. Same.
+- **certs:** 10003, for lego. Same.
 - **karakeep:** root. Its s6-overlay `/init` needs root.
 
 Image users were read from the registry configs on 2026-10-15.
@@ -132,22 +175,27 @@ about them. Restore by `zfs rollback`, or by copying out of
 
 ### Components
 
-All in namespace `research`.
+The research apps are in namespace `research`; ingress and certificates
+are in `ingress`.
 
 | Component | Image | Exposed as | Storage |
 |---|---|---|---|
-| zotero-webdav | `ghcr.io/hacdias/webdav` | Tailscale ingress `zotero-dav` | `zotero-webdav` |
+| lego (CronJob) | `goacme/lego` + `alpine/kubectl` | none | `certs` |
+| zotero-webdav | `ghcr.io/hacdias/webdav` | `zotero-dav.home.threadsafe.se` | `zotero-webdav` |
 | translation-server | `zotero/translation-server` (pin by digest) | ClusterIP only | none |
-| karakeep | `ghcr.io/karakeep-app/karakeep` | Tailscale ingress `karakeep` | `karakeep` |
+| karakeep | `ghcr.io/karakeep-app/karakeep` | `karakeep.home.threadsafe.se` | `karakeep` |
 | meilisearch | `getmeili/meilisearch:v1.41.0`, the version Karakeep's own manifests pin (newest upstream is v1.55) | ClusterIP only | `meilisearch` |
 | chrome | `ghcr.io/karakeep-app/karakeep-chrome` (runs as 65534) | ClusterIP only | none |
 | paperbridge | built from `services/paperbridge`, published to ghcr.io | CronJob, no ingress | small state |
 
-**Zotero WebDAV.** One user, basic auth, HTTPS through the Tailscale
-ingress. Zotero desktop: Settings → Sync → File Syncing → WebDAV, URL
-`https://zotero-dav.<tailnet>.ts.net/`. Zotero appends `zotero/` itself,
-and that directory must exist. Zotero on mobile supports WebDAV too, but
-the device needs Tailscale.
+**Zotero WebDAV.** One user, basic auth with a bcrypt-hashed password,
+HTTPS only. Zotero desktop: Settings → Sync → File Syncing → WebDAV, URL
+`https://zotero-dav.home.threadsafe.se/`. Zotero appends `zotero/` itself,
+and that directory already exists. Zotero on mobile works at home, or over
+the router VPN when away.
+
+**Karakeep.** Its own login. Set `DISABLE_SIGNUPS=true` once the owner's
+account exists. `NEXTAUTH_SECRET` and `MEILI_MASTER_KEY` come from `.env`.
 
 ### paperbridge: Karakeep → Zotero → Karakeep
 
@@ -198,21 +246,28 @@ doi.org / arxiv.org URLs.
 
 ## Build order
 
-Each step is done when it's deployed **and** verified from a tailnet
-device. Record that in "Status".
+Each step is done when it's deployed **and** verified from a LAN device
+(and once over the router VPN). Record that in "Status".
 
 0. **Host prep.**
    - `host/00-prep.sh` (idempotent): the parent dataset `hddpool/k8s`,
      the per-app child datasets and their ownership, and the sanoid policy
      plus timer.
-   - In the Tailscale admin console: MagicDNS, HTTPS, the OAuth client,
-     tags and ACLs.
-1. **Tailscale operator**, verified with a throwaway ingress.
+   - Owner tasks:
+     - In Loopia Customer Zone → LoopiaAPI, create an API user allowed to
+       read, add and remove DNS records for `threadsafe.se`. Its
+       credentials go in `.env`.
+     - At Loopia, add an A record `*.home.threadsafe.se` → the server's
+       LAN IP.
+     - Check that the router's DNS rebind protection doesn't block it.
+1. **Ingress and certificate.** Enable the ingress addon, run the lego
+   CronJob against Let's Encrypt staging and then production, and check
+   that a throwaway service shows a valid certificate on a LAN device.
 2. **zotero-webdav**, verified with Zotero desktop's "Verify Server" and a
    real attachment round trip.
 3. **translation-server**, smoke-tested with one DOI and one arXiv ID.
-4. **Karakeep + Meilisearch + Chrome.** First login, then create the API
-   key for paperbridge.
+4. **Karakeep + Meilisearch + Chrome.** First login, disable sign-ups,
+   then create the API key for paperbridge.
 5. **paperbridge v0** (handoff). GitHub Actions builds the image on `v*`
    tags; the version lives only in `pyproject.toml`.
 6. **paperbridge v1** (read-status sync back), then v2 (highlights).
@@ -225,7 +280,7 @@ CLAUDE.md
 .gitignore                # .env, kubeconfig*, *.secret.yaml
 host/                     # one-off host scripts: zfs datasets, sanoid
 k8s/
-  tailscale-operator/     # pinned chart version + values
+  ingress/                # lego CronJob, RBAC, certs PV/PVC, addon notes
   research/
     kustomization.yaml    # namespace, storage, and the apps below
     storage.yaml          # StorageClass zfs-local + PVs
@@ -238,9 +293,8 @@ services/paperbridge/     # Python package + Dockerfile
 .github/workflows/
 ```
 
-Kustomize, applied by hand: `kubectl apply -k k8s/research`. Helm only
-for the Tailscale operator. No Flux until there are enough services to
-justify it.
+Kustomize, applied by hand: `kubectl apply -k k8s/<dir>`. No Helm charts
+and no Flux until there are enough services to justify them.
 
 ## Working on the server
 
@@ -266,6 +320,10 @@ justify it.
 
 ## Verify before relying on
 
+- lego's `loopia` provider: which LoopiaAPI permissions it needs, and its
+  DNS propagation timeout against Loopia's nameservers.
+- The router (and VPN clients) resolve `*.home.threadsafe.se` to the LAN
+  IP. Watch for DNS rebind protection.
 - Karakeep rule engine: can a rule match on URL host (doi.org, arxiv.org)?
 - Zotero's `.prop` format, and whether desktop picks up a file paperbridge
   wrote directly. Test with a real library before automating.

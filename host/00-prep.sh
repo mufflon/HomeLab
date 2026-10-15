@@ -8,9 +8,11 @@ PARENT=hddpool/k8s
 declare -A OWNER=(
   [zotero-webdav]=10001:10001   # hacdias/webdav: single binary, runs as non-root
   [meilisearch]=10002:10002     # single binary, runs as non-root
+  [certs]=10003:10003           # lego: single binary, runs as non-root
   [karakeep]=0:0                # s6-overlay /init needs root
 )
-SNAPSHOTTED=(zotero-webdav karakeep)   # meilisearch is rebuildable from Karakeep
+declare -A MODE=([certs]=0700)  # private keys; everything else 0750
+SNAPSHOTTED=(zotero-webdav karakeep certs)   # meilisearch is rebuildable from Karakeep
 SANOID_CONF=/etc/sanoid/sanoid.conf
 MARKER="# managed by homelab/host/00-prep.sh"
 
@@ -32,7 +34,7 @@ for app in "${!OWNER[@]}"; do
   zfs list -H "$ds" >/dev/null 2>&1 || zfs create "$ds"
   mp=$(zfs get -H -o value mountpoint "$ds")
   chown "${OWNER[$app]}" "$mp"
-  chmod 0750 "$mp"
+  chmod "${MODE[$app]:-0750}" "$mp"
 done
 # Zotero appends zotero/ to the WebDAV URL and expects the directory to exist.
 dav_owner=${OWNER[zotero-webdav]}
