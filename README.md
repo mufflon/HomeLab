@@ -220,10 +220,19 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
    It usually takes 1–5 minutes, mostly waiting for Loopia's DNS. After
    that the CronJob renews by itself.
 7. **First-run steps per app:**
-   - Karakeep: create your account, set `DISABLE_SIGNUPS=true`, create an
-     API key, add it to `.env`, then rerun `scripts/secrets.sh`.
-   - Zotero desktop: Settings → Sync → File Syncing → WebDAV, URL
-     `https://zotero-dav.home.threadsafe.se/`, then "Verify Server".
+   - **Karakeep.** If its data on `hddpool/k8s/karakeep` survived, your
+     account is still there and there's nothing to do. On a **completely
+     empty** rebuild:
+     1. Set `DISABLE_SIGNUPS=false` in `k8s/research/karakeep/karakeep.env`
+        and apply.
+     2. Create your account. The first one becomes admin.
+     3. Set it back to `true` and apply again.
+
+     Then, in Karakeep → Settings → API Keys, create the key for
+     paperbridge, put it in `.env` and rerun `scripts/secrets.sh`.
+   - **Zotero desktop:** Settings → Account → File Syncing → WebDAV, URL
+     `https://zotero-dav.home.threadsafe.se/`, user and password from
+     `.env`, then "Verify Server".
 
 ## What this does not cover
 

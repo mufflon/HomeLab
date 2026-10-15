@@ -69,9 +69,17 @@ service must authenticate on its own.
       → *Attention Is All You Need*, preprint.
   - Gotcha for paperbridge: arXiv items carry the **latest version's**
     date (2023-08-02 for v7), not the original submission date.
-- **Next: step 4, Karakeep + Meilisearch + Chrome.** Needs
-  `KARAKEEP_NEXTAUTH_SECRET` and `MEILI_MASTER_KEY` in `.env`; both can be
-  generated.
+- **Step 4, Karakeep + Meilisearch + Chrome: done** (2026-10-16).
+  - Migrations ran, `db.db` is on ZFS, and the crawler is connected to
+    Chrome.
+  - `https://karakeep.home.threadsafe.se` answers over trusted HTTPS, and
+    `/api/health` reports ok.
+  - The owner's account exists, and then `DISABLE_SIGNUPS=true` was
+    applied. Verified: the sign-in page serves `"disableSignups":true`.
+- **Next: step 5, paperbridge v0 (handoff).** It needs these in `.env`:
+  - `KARAKEEP_API_KEY` (Karakeep → Settings → API Keys);
+  - `ZOTERO_USER_ID` and `ZOTERO_API_KEY` (zotero.org → Settings →
+    Security, with library read/write access).
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
@@ -412,6 +420,12 @@ images/translation-server/  # UPSTREAM_REF: which upstream commit we build
 services/paperbridge/     # Python package + Dockerfile
 .github/workflows/        # image builds → ghcr.io/mufflon/* (public, inherits repo visibility)
 ```
+
+Config that a pod reads as environment variables at start-up belongs in a
+kustomize `configMapGenerator` (e.g. `k8s/research/karakeep/karakeep.env`).
+The generated name carries a content hash, so editing the file and
+re-applying rolls the pod. A plain ConfigMap would change silently and need
+a manual restart that the repo doesn't capture.
 
 Kustomize, applied by hand: `kubectl apply -k k8s/` applies everything,
 and `kubectl apply -k k8s/<dir>` applies a single part. We use no Helm

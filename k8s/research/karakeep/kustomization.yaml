@@ -4,9 +4,14 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - configmap.yaml
   - pvc.yaml
   - web.yaml
   - meilisearch.yaml
   - chrome.yaml
   - ingress.yaml
+# Non-secret settings. A generator gives the ConfigMap a content-hash name, so changing
+# karakeep.env and re-applying rolls the web pod automatically (env vars are read at start).
+# DISABLE_SIGNUPS=true: the owner's account exists (the first sign-up became admin).
+configMapGenerator:
+  - name: karakeep
+    envs: [karakeep.env]
