@@ -23,21 +23,28 @@ service must authenticate on its own.
 
 ## Status
 
-2026-10-15:
+2026-10-16:
 
-- **Step 0, host part: mostly done.** `host/00-prep.sh` has run.
-  - `hddpool/k8s` with `zotero-webdav`, `karakeep` and `meilisearch`
-    exists, owned as listed under Storage.
-  - sanoid snapshots and its timer are active.
-  - The `certs` dataset was added to the script afterwards and is **not
-    created yet**. Rerun the script; it is idempotent.
-- **Step 0, owner tasks:** not done. These are the Loopia API user, the
-  wildcard A record and the router check (see Build order).
-- `host/01-microk8s.sh` (MicroK8s + hardened Traefik ingress) is written
-  but **not run yet**. MicroK8s itself is already installed.
-- README.md holds the prerequisites and the rebuild procedure.
-- Nothing is deployed: the cluster is a fresh, empty, healthy MicroK8s
-  1.36.
+- **Step 0, host part: done.** `host/00-prep.sh` has run.
+  - All four datasets (`zotero-webdav`, `karakeep`, `meilisearch`,
+    `certs`) exist, owned as listed under Storage.
+  - sanoid snapshots are being taken and its timer is active.
+- **Step 0, owner tasks: not done.** These are the Loopia API user (the
+  rights are known now, see Build order), the `*.home.threadsafe.se` A
+  record (still Loopia's catch-all `194.9.94.86`), the router check and
+  `.env`.
+- **Step 1, host part: done.** `host/01-microk8s.sh` has run. Traefik 3.6.13
+  is live on the server's ports 80/443. Verified from a LAN machine:
+  - HTTP → `301` to HTTPS;
+  - the dashboard and its API return `404`, even with
+    `Host: dashboard.localhost`;
+  - the default TLSStore points at `ingress/wildcard-home-tls`. That Secret
+    doesn't exist yet, so Traefik serves its self-signed placeholder.
+- **Step 1, remaining:** `scripts/secrets.sh`, `k8s/ingress/` (lego),
+  the root `k8s/kustomization.yaml`, and the first certificate. These
+  wait for the owner tasks.
+- **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
+  (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
   the owner already has VPN on the router.
 
@@ -140,7 +147,15 @@ Facts that matter when working here, verified 2026-10-15.
   upgrade:
   - The addon's values create an **unauthenticated dashboard** route on
     `Host(dashboard.localhost)`. The script disables it.
-  - The script adds a **web → websecure** redirect.
+  - The script adds a **web → websecure** redirect:
+    `ports.web.http.redirections.entryPoint.*`. In chart 39 the redirect
+    sits under `http`. The older `ports.web.redirections` fails schema
+    validation.
+  - The script switches off `api.dashboard`.
+  - The script makes rollouts update in place (`maxSurge 0`,
+    `maxUnavailable 1`). The chart's default surge rollout deadlocks on a
+    single node, because the new pod needs host ports 80/443 that the old
+    pod still holds. Ingress therefore blips for a few seconds per update.
 - **Writing Ingresses.** Use `ingressClassName: public` (the addon's
   default class). Put a `tls: [{hosts: [<name>.home.threadsafe.se]}]`
   entry **without** `secretName`, so Traefik serves the default wildcard
@@ -378,11 +393,6 @@ it.
 
 ## Verify before relying on
 
-- `microk8s enable ingress -V … --default-ssl-certificate …` passes both
-  flags through to the addon (no `--` needed).
-- Traefik chart 39 value names for the web → websecure redirect
-  (`ports.web.redirections.entryPoint.*`) and for the dashboard
-  (`ingressRoute.dashboard.enabled`).
 - An Ingress with `tls.hosts` and no `secretName` gets the default
   TLSStore certificate.
 - lego's `loopia` provider: its DNS propagation timeout against Loopia's

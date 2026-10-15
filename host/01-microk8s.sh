@@ -22,14 +22,19 @@ step "Ingress addon: Traefik, wildcard certificate as the default"
 # The Secret may not exist yet; Traefik serves its self-signed fallback until lego has run.
 microk8s enable ingress -V "$TRAEFIK_CHART" --default-ssl-certificate "$DEFAULT_CERT" </dev/null
 
-step "Harden: no dashboard route, HTTP redirects to HTTPS"
+step "Harden: no dashboard, HTTP redirects to HTTPS, rollouts that fit one node"
 # The addon's values expose an unauthenticated dashboard on Host(dashboard.localhost),
-# reachable by anyone on the LAN who sets that Host header.
+# reachable by anyone on the LAN who sets that Host header. Value paths per chart 39.0.8's values.yaml.
+# The chart's default surge rollout (maxSurge 1) deadlocks here: the new pod needs host ports
+# 80/443 that the old pod still holds on the only node. Replace in place instead.
 microk8s helm upgrade traefik traefik/traefik -n ingress --version "$TRAEFIK_CHART" --reuse-values \
+  --set updateStrategy.rollingUpdate.maxSurge=0 \
+  --set updateStrategy.rollingUpdate.maxUnavailable=1 \
+  --set api.dashboard=false \
   --set ingressRoute.dashboard.enabled=false \
-  --set ports.web.redirections.entryPoint.to=websecure \
-  --set ports.web.redirections.entryPoint.scheme=https \
-  --set ports.web.redirections.entryPoint.permanent=true </dev/null
+  --set ports.web.http.redirections.entryPoint.to=websecure \
+  --set ports.web.http.redirections.entryPoint.scheme=https \
+  --set ports.web.http.redirections.entryPoint.permanent=true </dev/null
 
 step "Result"
 microk8s kubectl -n ingress get daemonset,tlsstore,ingressroute 2>&1
