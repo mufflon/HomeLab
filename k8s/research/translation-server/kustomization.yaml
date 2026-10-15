@@ -1,0 +1,8 @@
+# Zotero translation-server: URL / DOI / arXiv / ISBN -> Zotero item JSON (the engine behind the
+# Zotero browser connector). Cluster-internal only (no Ingress); paperbridge calls
+# http://translation-server.research:1969 (POST /web, POST /search).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml

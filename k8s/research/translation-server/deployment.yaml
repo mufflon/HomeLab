@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: translation-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: translation-server
+  template:
+    metadata:
+      labels:
+        app: translation-server
+    spec:
+      containers:
+        - name: translation-server
+          # Newest published image (2026-10: 2.0.6 from 2025-01). Its entrypoint git-pulls the
+          # site translators on every start, so those stay current; it therefore runs as the
+          # image's default user with a writable filesystem (internal-only service).
+          image: zotero/translation-server:2.0.6@sha256:a80abfaaab0d84c8cc4b0ef79e4fde94b391420ee3a1e69d680fc89a18bff115
+          ports:
+            - {name: http, containerPort: 1969}
+          startupProbe:            # git pull + npm start can take a while
+            tcpSocket: {port: http}
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            tcpSocket: {port: http}
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: http}
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 50m, memory: 256Mi}
+            limits: {memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault

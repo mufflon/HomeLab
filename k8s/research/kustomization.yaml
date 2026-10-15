@@ -5,3 +5,4 @@ namespace: research
 resources:
   - namespace.yaml
   - zotero-webdav
+  - translation-server
