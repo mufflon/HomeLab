@@ -1,0 +1,8 @@
+# Cluster-scoped storage: the zfs-local StorageClass and one PersistentVolume per ZFS dataset
+# under hddpool/k8s (created by host/00-prep.sh). PVs are pre-bound to their claim and Retain,
+# so a rebuild reattaches the same data.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - storageclass.yaml
+  - pv-certs.yaml

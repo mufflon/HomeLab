@@ -1,0 +1,31 @@
+# The lego job may create Secrets in `ingress` (create can't be limited by name), and may read
+# and update only wildcard-home-tls.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lego
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lego
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [wildcard-home-tls]
+    verbs: [get, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lego
+subjects:
+  - kind: ServiceAccount
+    name: lego
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lego

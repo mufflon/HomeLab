@@ -1,0 +1,6 @@
+# Root: `kubectl apply -k k8s/` rebuilds everything in the cluster (after host/ scripts and scripts/secrets.sh).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - storage
+  - ingress

@@ -1,0 +1,88 @@
+# Daily: lego gets or renews the wildcard certificate via DNS-01 (LoopiaAPI), then kubectl writes it
+# into ingress/wildcard-home-tls, which Traefik serves as its default certificate.
+# First run / test: kubectl -n ingress create job lego-now --from=cronjob/lego
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lego
+spec:
+  schedule: "23 3 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 5400
+      template:
+        spec:
+          serviceAccountName: lego
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 10003      # owner of hddpool/k8s/certs (host/00-prep.sh)
+            runAsGroup: 10003
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: lego
+              image: goacme/lego:v5.5.2
+              # `run` gets a certificate, or renews it when due (lego v5).
+              args:
+                - run
+                - --accept-tos
+                - --server=$(ACME_SERVER)
+                - --path=/data/$(ACME_SERVER)
+                - --dns=loopia
+                - --domains=$(CERT_DOMAIN)
+              env:
+                - {name: HOME, value: /tmp}
+              envFrom:
+                - configMapRef:
+                    name: lego-config
+                - secretRef:
+                    name: lego-credentials
+              volumeMounts:
+                - {name: certs, mountPath: /data}
+                - {name: tmp, mountPath: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+          containers:
+            - name: publish
+              image: alpine/kubectl:1.36.4
+              command: [/bin/sh, -c]
+              args:
+                - |
+                  set -eu
+                  name=$(printf '%s' "$CERT_DOMAIN" | sed 's/^\*/_/')
+                  crt=$(find "/data/$ACME_SERVER" -name "$name.crt" | head -n1)
+                  key=$(find "/data/$ACME_SERVER" -name "$name.key" | head -n1)
+                  [ -n "$crt" ] && [ -n "$key" ] || { echo "no certificate found under /data/$ACME_SERVER"; find "/data/$ACME_SERVER"; exit 1; }
+                  echo "publishing $crt"
+                  kubectl -n ingress create secret tls wildcard-home-tls --cert="$crt" --key="$key" \
+                    --dry-run=client -o yaml \
+                    | kubectl apply --server-side --field-manager=lego-cronjob -f -
+              env:
+                - {name: HOME, value: /tmp}
+              envFrom:
+                - configMapRef:
+                    name: lego-config
+              volumeMounts:
+                - {name: certs, mountPath: /data, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+          volumes:
+            - name: certs
+              persistentVolumeClaim:
+                claimName: lego-certs
+            - name: tmp
+              emptyDir: {}

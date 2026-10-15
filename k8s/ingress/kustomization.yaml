@@ -1,0 +1,11 @@
+# Certificates for the Traefik ingress. Traefik itself is the MicroK8s addon (host/01-microk8s.sh),
+# which owns the `ingress` namespace and the default TLSStore that points at wildcard-home-tls.
+# Needs the lego-credentials Secret (scripts/secrets.sh).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ingress
+resources:
+  - pvc.yaml
+  - rbac.yaml
+  - lego-config.yaml
+  - cronjob.yaml
