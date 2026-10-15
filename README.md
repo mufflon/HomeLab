@@ -8,8 +8,9 @@ It's public because there's no reason for it not to be. You're welcome to
 read it or borrow from it. Nothing here is a product, though: it's tuned to
 one home network, one server and one person's reading habits.
 
-> **Status:** early. The host is prepared, but most services are designed
-> and not yet deployed. Steps marked *(planned)* below don't exist in the
+> **Status:** early. The host, the ingress and HTTPS on
+> `*.home.threadsafe.se` are up. The research apps themselves are designed
+> and not yet deployed. Things marked *(planned)* below don't exist in the
 > repo yet. The detailed, current state is in the "Status" section of
 > [CLAUDE.md](CLAUDE.md).
 
@@ -138,8 +139,8 @@ library sync, and Let's Encrypt plus Loopia's API for certificates.
 | `README.md` | This file: purpose, design, how to rebuild |
 | `CLAUDE.md` | The detailed spec and working notes. [Claude Code](https://claude.com/claude-code), the AI coding assistant this was built with, reads it at the start of every session. It has the exact versions, UIDs, gotchas and open questions. Worth reading for the "how exactly" |
 | `host/` | Idempotent scripts run once on the server with sudo (storage, MicroK8s) |
-| `k8s/` | Kubernetes manifests, one directory per area *(planned)* |
-| `scripts/` | Helpers run from your machine, e.g. `.env` → Kubernetes Secrets *(planned)* |
+| `k8s/` | Kubernetes manifests, one directory per area: `storage/` (ZFS-backed volumes), `ingress/` (certificates). Apps *(planned)* |
+| `scripts/` | Helpers run from your machine: `secrets.sh` turns `.env` into Kubernetes Secrets |
 | `services/paperbridge/` | The glue service's source and container build *(planned)* |
 | `.env.example` | Every secret the setup needs, by name only |
 
@@ -202,10 +203,10 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
 3. **Kubeconfig:** `ssh minisforum microk8s config > ~/.kube/homelab`.
    Point `KUBECONFIG` at it. Never commit it.
 4. **Secrets:** `scripts/secrets.sh` creates every Kubernetes Secret from
-   `.env`. *(planned)*
-5. **Everything else:** `kubectl apply -k k8s/`. *(planned)*
-   - Namespaces, storage (StorageClass + PVs), the lego certificate
-     CronJob, and all apps.
+   `.env`. Secrets whose values aren't filled in yet are skipped.
+5. **Everything else:** `kubectl apply -k k8s/`.
+   - Storage (StorageClass + PVs) and the lego certificate CronJob.
+   - Later, all apps *(planned)*.
    - No Helm charts and no CRDs of our own, so a single apply is enough.
 6. **First certificate:** run the CronJob once instead of waiting for its
    schedule:
@@ -214,7 +215,8 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
    kubectl -n ingress create job lego-now --from=cronjob/lego
    ```
 
-   *(planned)*
+   It usually takes 1–5 minutes, mostly waiting for Loopia's DNS. After
+   that the CronJob renews by itself.
 7. **First-run steps per app:**
    - Karakeep: create your account, set `DISABLE_SIGNUPS=true`, create an
      API key, add it to `.env`, then rerun `scripts/secrets.sh`.

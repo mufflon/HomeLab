@@ -29,20 +29,24 @@ service must authenticate on its own.
   - All four datasets (`zotero-webdav`, `karakeep`, `meilisearch`,
     `certs`) exist, owned as listed under Storage.
   - sanoid snapshots are being taken and its timer is active.
-- **Step 0, owner tasks: not done.** These are the Loopia API user (the
-  rights are known now, see Build order), the `*.home.threadsafe.se` A
-  record (still Loopia's catch-all `194.9.94.86`), the router check and
-  `.env`.
-- **Step 1, host part: done.** `host/01-microk8s.sh` has run. Traefik 3.6.13
-  is live on the server's ports 80/443. Verified from a LAN machine:
-  - HTTP → `301` to HTTPS;
-  - the dashboard and its API return `404`, even with
-    `Host: dashboard.localhost`;
-  - the default TLSStore points at `ingress/wildcard-home-tls`. That Secret
-    doesn't exist yet, so Traefik serves its self-signed placeholder.
-- **Step 1, remaining:** `scripts/secrets.sh`, `k8s/ingress/` (lego),
-  the root `k8s/kustomization.yaml`, and the first certificate. These
-  wait for the owner tasks.
+- **Step 0, owner tasks: done.** The LoopiaAPI user exists, the A record
+  `*.home.threadsafe.se` → LAN IP resolves (and the router passes it, so
+  there's no DNS-rebind block), and `.env` has the step 1 values.
+- **Step 1: done**, verified from a LAN machine on 2026-10-16. Still to do:
+  one check over the router VPN (owner).
+  - Traefik 3.6.13 is live on the server's ports 80/443.
+  - lego got the production wildcard certificate (issuer `Let's Encrypt
+    YE1`). Staging took about 1 minute and production about 5, mostly
+    waiting for Loopia's DNS. The CronJob renews daily at 03:23 UTC
+    when due.
+  - A throwaway Ingress (`tls.hosts`, no `secretName`) answered `200` on
+    `https://test.home.threadsafe.se/` with a trusted certificate.
+  - HTTP gets `301` to HTTPS. Unknown names get `404`. The dashboard and
+    its API return `404`, even with `Host: dashboard.localhost`.
+  - The kubeconfig is `~/.kube/homelab` on the workstation.
+  - Leftover: lego's staging account and certificate under
+    `/data/letsencrypt-staging` on the certs dataset. Harmless.
+- **Next: step 2, zotero-webdav.**
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
@@ -179,8 +183,17 @@ Facts that matter when working here, verified 2026-10-15.
      one Secret.
 
   lego's account key and certificate live on the `certs` dataset, so runs
-  don't re-issue and hit Let's Encrypt rate limits. Use the Let's Encrypt
-  **staging** server until the flow works.
+  don't re-issue and hit Let's Encrypt rate limits.
+  - `ACME_SERVER` in `k8s/ingress/lego-config.yaml` (a lego shortcode:
+    `letsencrypt` or `letsencrypt-staging`) selects both the CA and the
+    state directory `/data/<shortcode>`. Use staging for experiments.
+  - lego **v5** changed the CLI from v4: `run` now gets *or* renews (no
+    separate `renew`), and renewal timing is automatic (ARI, about
+    1/3 of the certificate's lifetime left).
+  - lego v5's help text shows Loopia's two timeouts swapped. Both are set
+    explicitly in the ConfigMap: wait up to 40 minutes, check every
+    minute.
+  - Files land in `certificates/_.home.threadsafe.se.{crt,key}`.
 
   cert-manager was rejected: its only Loopia webhook was last released in
   2021, on cert-manager v1.2.
@@ -393,12 +406,8 @@ it.
 
 ## Verify before relying on
 
-- An Ingress with `tls.hosts` and no `secretName` gets the default
-  TLSStore certificate.
-- lego's `loopia` provider: its DNS propagation timeout against Loopia's
-  nameservers.
-- The router (and VPN clients) resolve `*.home.threadsafe.se` to the LAN
-  IP. Watch for DNS rebind protection.
+- VPN clients resolve `*.home.threadsafe.se` to the LAN IP and reach it.
+  The router itself was verified on 2026-10-16.
 - Karakeep rule engine: can a rule match on URL host (doi.org, arxiv.org)?
 - Zotero's `.prop` format, and whether desktop picks up a file paperbridge
   wrote directly. Test with a real library before automating.

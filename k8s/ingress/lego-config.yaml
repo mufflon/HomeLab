@@ -5,7 +5,7 @@ metadata:
 data:
   # lego server shortcode: letsencrypt-staging while testing, letsencrypt for real.
   # Each server keeps its own state under /data/<ACME_SERVER>, so switching is safe.
-  ACME_SERVER: letsencrypt-staging
+  ACME_SERVER: letsencrypt
   CERT_DOMAIN: "*.home.threadsafe.se"
   # Loopia's nameservers can take a while to publish the TXT record: wait up to 40 min, check every minute.
   LOOPIA_PROPAGATION_TIMEOUT: "2400"
