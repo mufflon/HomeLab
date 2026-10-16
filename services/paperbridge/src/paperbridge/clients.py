@@ -138,6 +138,17 @@ class Zotero(API):
         """Every note, child or standalone, outside the trash."""
         return self._all("/items", itemType="note")
 
+    def attachments(self) -> list[dict]:
+        return self._all("/items", itemType="attachment")
+
+    def annotations(self) -> list[dict]:
+        """Every annotation (highlights, notes on the page, ...); parentItem is the attachment."""
+        return self._all("/items", itemType="annotation")
+
+    def library_version(self) -> int:
+        response = self.request("GET", "/items/top", params={"limit": 1, "format": "keys"})
+        return int(response.headers["Last-Modified-Version"])
+
     def item(self, key: str) -> dict:
         return self.request("GET", f"/items/{key}").json()["data"]
 

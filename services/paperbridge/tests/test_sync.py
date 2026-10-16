@@ -1,6 +1,7 @@
 """Two-way sync of metadata and comments, and read status, against in-memory fakes."""
 
 import copy
+import json
 from datetime import datetime
 
 import pytest
@@ -8,6 +9,8 @@ import pytest
 from paperbridge.sync import (
     State,
     Sync,
+    highlights_section,
+    split_note,
     _creators,
     bookmark_comments,
     extra_value,
@@ -53,6 +56,17 @@ class FakeZotero:
         self.items = {i["key"]: i for i in items}
         self.writes = []
         self.n = 0
+        self.annotation_reads = 0
+
+    def library_version(self):
+        return hash(json.dumps(self.items, sort_keys=True))  # any change moves it
+
+    def attachments(self):
+        return [copy.deepcopy(i) for i in self.items.values() if i["itemType"] == "attachment"]
+
+    def annotations(self):
+        self.annotation_reads += 1
+        return [copy.deepcopy(i) for i in self.items.values() if i["itemType"] == "annotation"]
 
     def notes(self):
         return [copy.deepcopy(i) for i in self.items.values() if i["itemType"] == "note"]
@@ -129,7 +143,7 @@ def world(tmp_path):
             read_tag_format="read-%Y-%m", write=lambda what, fn, *a: None if dry_run else fn(*a),
             dry_run=dry_run, now=lambda: NOW,
         )
-        library = [copy.deepcopy(i) for i in z.items.values() if i["itemType"] != "note"]
+        library = [copy.deepcopy(i) for i in z.items.values() if "parentItem" not in i]
         assert sync.run(library, copy.deepcopy(kk.bookmarks), set()) == 0
         if not dry_run:
             state.save()
@@ -259,3 +273,53 @@ def test_helpers():
     assert bookmark_comments(f"x\n\n{LINKS}\n") == "x"
     assert note_comments(note_html("one\n\ntwo", PREFIX + "b"), PREFIX + "b") == "one\n\ntwo"
     assert [c.get("name") or c["lastName"] for c in _creators("Plato; Aidan N. Gomez", {"creators": []})] == ["Plato", "Gomez"]
+
+
+def annotation(key, sort, text="", comment="", kind="highlight", page="3"):
+    return {"key": key, "version": 1, "itemType": "annotation", "parentItem": "PDF00001", "annotationType": kind,
+            "annotationText": text, "annotationComment": comment, "annotationPageLabel": page,
+            "annotationSortIndex": sort}
+
+
+def test_highlights_go_to_the_bookmark_note_and_follow_zotero(world):
+    kk, z, run, quiet = world
+    z.items["PDF00001"] = {"key": "PDF00001", "version": 1, "itemType": "attachment", "parentItem": "ITEM0001"}
+    z.items["ANN00002"] = annotation("ANN00002", "00004|000100|00200", "multi-head\nattention", "Key idea", page="5")
+    z.items["ANN00001"] = annotation("ANN00001", "00002|000010|00100", "The dominant sequence transduction models")
+    bm(kk)["note"] = f"My own comment.\n\n{LINKS}"
+    run()
+    note = bm(kk)["note"]
+    assert note.startswith("My own comment.\n\nHighlights from Zotero:\n- p. 3: \"The dominant")
+    assert '- p. 5: "multi-head attention"\n  Key idea\n\nZotero: zotero://' in note  # reading order, links last
+    assert split_note(note)[0] == "My own comment."
+    [own_note] = [i for i in z.items.values() if i["itemType"] == "note"]  # comments only, no highlights
+    assert "Highlights" not in own_note["note"]
+    quiet()  # this run reads annotations again once: the last run's own writes moved the version
+    reads = z.annotation_reads
+    quiet()
+    assert z.annotation_reads == reads  # library unchanged since: annotations not read again
+
+    z.items["ANN00001"].update(annotationComment="Now with a comment", version=2)  # edited in Zotero
+    del z.items["ANN00002"]
+    run()
+    assert '- p. 3: "The dominant sequence transduction models"\n  Now with a comment\n\nZotero' in bm(kk)["note"]
+    assert "multi-head" not in bm(kk)["note"]
+    quiet()
+
+    # Typing into the highlights section in Karakeep is undone; a comment edit above it syncs.
+    comments, section = split_note(bm(kk)["note"])
+    bm(kk)["note"] = f"My own comment, edited.\n\n{section}\n- my addition\n\n{LINKS}"
+    run()
+    assert "my addition" not in bm(kk)["note"] and bm(kk)["note"].startswith("My own comment, edited.\n\nHighlights")
+    assert "My own comment, edited." in [i for i in z.items.values() if i["itemType"] == "note"][0]["note"]
+    quiet()
+
+
+def test_highlights_section_formats():
+    notes = [
+        annotation("A", "1", comment="Check this proof\nagain", kind="note", page="7"),
+        annotation("B", "0", text="x", page=""),
+        annotation("C", "2", kind="image"),  # no text, no comment: left out
+    ]
+    assert highlights_section(notes) == 'Highlights from Zotero:\n- "x"\n- p. 7, note: Check this proof\n  again'
+    assert highlights_section([]) == ""

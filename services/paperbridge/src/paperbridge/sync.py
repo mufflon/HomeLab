@@ -3,6 +3,9 @@
 It follows the one-entry-point rule (CLAUDE.md, paperbridge):
 - metadata (title, authors, date, abstract) and comments sync both ways;
 - read status goes Zotero -> Karakeep (the Zotero Reading List plugin's Extra lines);
+- highlights go Zotero -> Karakeep: the PDF's annotations become a "Highlights from Zotero:"
+  section in the bookmark's note, rebuilt every run (Karakeep's own highlights are anchored to
+  its text view of a page, which doesn't map to PDF positions, so nothing flows back);
 - files and structure are not touched here; they only go Karakeep -> Zotero (handoff, mirror).
 
 Syncing both ways needs to know which side changed, so the last-synced values of every
@@ -33,6 +36,7 @@ from .clients import Karakeep, Zotero
 log = logging.getLogger(__name__)
 
 NOTE_HEADING = "From Karakeep"
+HIGHLIGHTS_HEADER = "Highlights from Zotero:"
 ZOTERO_LINK_LINE = re.compile(
     r"^(?:Zotero: zotero://select/library/items/[A-Z0-9]{8}|https://www\.zotero\.org/\S+/items/[A-Z0-9]{8})$"
 )
@@ -44,6 +48,12 @@ def norm_text(text: str | None) -> str:
     """Lines stripped, runs of blank lines made one, ends trimmed: how comments are compared."""
     lines = [line.strip() for line in (text or "").replace("\r\n", "\n").split("\n")]
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def norm_section(text: str | None) -> str:
+    """Like norm_text, but keeps each line's indentation (the highlights section uses it)."""
+    lines = [line.rstrip() for line in (text or "").replace("\r\n", "\n").split("\n")]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip("\n")
 
 
 def same_text(a: str, b: str) -> bool:
@@ -89,19 +99,52 @@ def note_comments(html: str, link: str) -> str:
     return norm_text(rest) if first.strip() == NOTE_HEADING else text
 
 
+def split_note(note: str | None) -> tuple[str, str]:
+    """A bookmark note's comments and its highlights section, both without the Zotero links
+    paperbridge keeps last. Comments sync both ways; the highlights section is Zotero's."""
+    lines = [l for l in (note or "").splitlines() if not ZOTERO_LINK_LINE.match(l.strip())]
+    for i, line in enumerate(lines):
+        if line.strip() == HIGHLIGHTS_HEADER:
+            return norm_text("\n".join(lines[:i])), norm_section("\n".join(lines[i:]))
+    return norm_text("\n".join(lines)), ""
+
+
 def bookmark_comments(note: str | None) -> str:
-    """The comments in a bookmark's note: without the Zotero links paperbridge put there."""
-    return norm_text("\n".join(l for l in (note or "").splitlines() if not ZOTERO_LINK_LINE.match(l.strip())))
+    return split_note(note)[0]
 
 
 def zotero_links(key: str, web_library: str) -> str:
     return f"Zotero: zotero://select/library/items/{key}\n{web_library}/{key}"
 
 
-def bookmark_note(comments: str, key: str, web_library: str) -> str:
-    comments = norm_text(comments)
-    links = zotero_links(key, web_library)
-    return f"{comments}\n\n{links}" if comments else links
+def bookmark_note(comments: str, key: str, web_library: str, highlights: str = "") -> str:
+    """Comments first, then the highlights section, then the Zotero links."""
+    parts = (norm_text(comments), norm_section(highlights), zotero_links(key, web_library))
+    return "\n\n".join(p for p in parts if p)
+
+
+def highlights_section(annotations: list[dict]) -> str:
+    """Zotero annotations, in reading order, as plain text a Karakeep search finds:
+    - p. 3: "the highlighted text"
+      the comment
+    Sticky notes and other annotations without text show their kind and comment."""
+    entries = []
+    for a in sorted(annotations, key=lambda a: (a.get("parentItem") or "", a.get("annotationSortIndex") or "")):
+        text = " ".join((a.get("annotationText") or "").split())
+        comment = norm_text(a.get("annotationComment"))
+        if not text and not comment:
+            continue
+        page = a.get("annotationPageLabel")
+        kind = a.get("annotationType") or "annotation"
+        where = f"p. {page}" if page else ""
+        if text:
+            head = f'{where}: "{text}"' if where else f'"{text}"'
+        else:
+            head = ", ".join(p for p in (where, kind) if p) + ":" + (f" {comment.splitlines()[0]}" if comment else "")
+            comment = "\n".join(comment.splitlines()[1:])
+        lines = [f"- {head}"] + [f"  {line}" if line else "" for line in comment.splitlines()]
+        entries.append("\n".join(lines))
+    return f"{HIGHLIGHTS_HEADER}\n" + "\n".join(entries) if entries else ""
 
 
 def extra_value(item: dict, name: str) -> str:
@@ -289,6 +332,7 @@ class Sync:
         if pairs:
             for note in self.zotero.notes():
                 notes.setdefault(note.get("parentItem") or "", []).append(note)
+        self.highlights = self._highlights() if pairs else {}
         failed = changed = 0
         for item, bid in pairs:
             bookmark = bookmarks.get(bid)
@@ -325,12 +369,16 @@ class Sync:
         note = next((n for n in notes if f'href="{escape(link)}"' in (n.get("note") or "")), None)
         note = note or next((n for n in notes if n["key"] == snap.get("note")), None)
         z_text = note_comments(note["note"], link) if note else ""
-        k_text = bookmark_comments(b.get("note"))
+        k_text, k_highlights = split_note(b.get("note"))
         text = self._merge_comments(z_text, k_text, snap.get("comments"))
         to_zotero_note = text is not None and text != z_text
+        highlights = norm_section(self.highlights.get(key, ""))
         if text is not None and text != k_text:
             log.info("%s -> bookmark %s: comments", key, bid)
-            k_patch["note"] = bookmark_note(text, key, self.web_library)
+        if highlights != k_highlights:
+            log.info("%s -> bookmark %s: %d highlight(s)", key, bid, highlights.count("\n- "))
+        if (text is not None and text != k_text) or highlights != k_highlights:
+            k_patch["note"] = bookmark_note(k_text if text is None else text, key, self.web_library, highlights)
 
         read_tag = self._read(item, b, snap.get("read"), k_patch)
 
@@ -360,6 +408,24 @@ class Sync:
         if not self.dry_run:
             self.state.put(pair, new_snap)
         return bool(z_patch or k_patch or to_zotero_note or read_tag != snap.get("read"))
+
+    def _highlights(self) -> dict[str, str]:
+        """Each item's highlights section. Rebuilt only when the library changed since the last
+        build (its version), since reading every annotation is the costly part."""
+        version = self.zotero.library_version()
+        cached = self.state.data.get("highlights") or {}
+        if cached.get("version") == version:
+            return cached["items"]
+        parents = {a["key"]: a.get("parentItem") for a in self.zotero.attachments()}
+        by_item: dict[str, list[dict]] = {}
+        for annotation in self.zotero.annotations():
+            item_key = parents.get(annotation.get("parentItem"))
+            if item_key:
+                by_item.setdefault(item_key, []).append(annotation)
+        items = {key: text for key, a in by_item.items() if (text := highlights_section(a))}
+        self.state.data["highlights"] = {"version": version, "items": items}
+        self.state.dirty = True
+        return items
 
     def _merge_comments(self, z: str, k: str, snap: dict | None) -> str | None:
         """The comments both sides should have, or None if nothing needs doing."""
