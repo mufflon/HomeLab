@@ -37,10 +37,11 @@ annoyances:
      storage.
    - When a paper is marked read in Zotero, that flows back to Karakeep
      *(planned)*.
-   - Karakeep's lists decide how papers are filed in Zotero: each list is
-     a Zotero collection, and moving a bookmark in Karakeep moves the
-     paper in Zotero *(planned)*. There's one structure to maintain, and
-     it lives in Karakeep.
+   - Karakeep's lists decide how papers are filed in Zotero. The lists
+     chosen for it, with their sublists, appear in Zotero as collections,
+     and moving a bookmark in Karakeep moves the paper in Zotero. There's
+     one structure to maintain, and it lives in Karakeep. Papers added in
+     Zotero directly are left alone.
 
 A side benefit: everything lives at home, as plain files on our own disks.
 And because Karakeep keeps the full text, an AI assistant can read saved
@@ -108,7 +109,9 @@ open-access PDFs.
 2. Within 15 minutes paperbridge has made it a Zotero item, with full
    metadata and, when one can be found, the PDF. The bookmark gets the tag
    `in-zotero`, and its note links to the Zotero item.
-3. Zotero desktop or mobile shows the paper after its next sync.
+3. Zotero desktop or mobile shows the paper after its next sync. If the
+   bookmark is in a list under one of the mirrored lists, the paper is in
+   the matching collection; move the bookmark, and the paper follows.
 
 A paper that's already in Zotero (same DOI) is linked, not duplicated. If
 no translator recognises a page, paperbridge keeps trying for a day, then
@@ -158,6 +161,17 @@ creates a minimal item tagged `needs-metadata` to fix by hand.
     checksum format Zotero desktop uses there, and only then creates the
     attachment in the library. Zotero desktop downloads it like any synced
     file.
+- **One structure, kept in Karakeep.**
+  - Two services with their own folders would drift apart. So Zotero's
+    collections follow Karakeep's lists one-way, and are never organized
+    by hand.
+  - Karakeep holds more than papers. Only the lists named in
+    `MIRROR_LISTS` (in `k8s/research/paperbridge/paperbridge.env`) are
+    mirrored, with everything under them.
+  - Papers added to Zotero directly, and collections outside those trees,
+    are left alone.
+  - An emptied collection goes to Zotero's trash rather than being
+    deleted, so nothing is lost by accident.
 - **The repo is the rebuild recipe.** Host setup is idempotent scripts.
   Everything in the cluster is plain Kubernetes manifests, applied with a
   single `kubectl apply -k k8s/`. We add no Helm charts, operators or CRDs

@@ -80,8 +80,8 @@ service must authenticate on its own.
   - The owner checked Zotero desktop: the item synced, and its
     "Preprint PDF" downloaded from WebDAV and opens. So desktop picks up
     files paperbridge writes directly.
-  - The CronJob runs `ghcr.io/mufflon/paperbridge:0.1.2` every 15
-    minutes. Its Secret comes from `.env`. In `scripts/secrets.sh`, a
+  - The CronJob runs `ghcr.io/mufflon/paperbridge` every 15 minutes:
+    0.1.2 at the end of step 5, 0.2.0 since. Its Secret comes from `.env`. In `scripts/secrets.sh`, a
     source key ending in `?` is optional (`UNPAYWALL_EMAIL`). The WebDAV
     login comes from the existing `zotero-webdav` Secret.
   - Live test, run in-cluster as Jobs made from the CronJob:
@@ -125,9 +125,13 @@ service must authenticate on its own.
     then Unpaywall.
   - On WebDAV, `77YMI7CV.zip` / `.prop` remain from step 2's deleted test
     item. Zotero desktop purges orphaned WebDAV files by itself.
-- **Next: step 6, paperbridge v1:** read-status sync back, and
-  Karakeep's lists mirrored as Zotero collections (see paperbridge,
+- **Lists → collections: done in paperbridge 0.2.0** (2026-10-16), ahead
+  of step 6 at the owner's request. It is deployed, but off until
+  `MIRROR_LISTS` names the list(s) to mirror (see paperbridge,
   "Structure").
+  - Every run now reads the Zotero library, even with nothing to hand
+    off. That is about one request per 100 items, plus the collections.
+- **Next: step 6, paperbridge v1:** read-status sync back.
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
@@ -393,27 +397,49 @@ doi.org / arxiv.org URLs.
 - Rules are set in the UI and stored in Karakeep's database, not in this
   repo.
 
-**Structure: Karakeep's lists are Zotero's collections** (v1; decided by
-the owner on 2026-10-16). There is one structure, and it is kept in
-Karakeep.
+**Structure: chosen Karakeep lists are Zotero's collections** (decided by
+the owner on 2026-10-16; built in 0.2.0, `mirror.py`). The structure for
+papers is kept in Karakeep, and Zotero follows it one-way, every run.
+Karakeep also keeps things that aren't papers, so only chosen lists are
+mirrored.
 
-- Every run mirrors it one-way into Zotero:
-  - a list becomes a top-level collection of the same name;
-  - a nested list becomes a subcollection;
-  - each handed-off item sits in exactly the collections that match its
-    bookmark's lists.
-- Moving a bookmark in Karakeep moves the item within 15 minutes.
-- Filing by hand in Zotero isn't supported. The next run puts the item
-  back where Karakeep says.
-- Collections are matched by name, because Zotero collections have no
-  field to hold a list ID. A renamed list therefore becomes a new
-  collection.
-- paperbridge deletes a collection only when it is empty and matches no
-  list. Deleting a collection never deletes items.
+- **Which lists:** `MIRROR_LISTS` in `k8s/research/paperbridge/paperbridge.env`
+  names top-level Karakeep lists, comma-separated. Empty means off, which
+  is the current state, pending the owner's choice.
+  - Each named list becomes a top-level collection of the same name. Its
+    manual sublists become subcollections, at any depth, created as they
+    appear.
+  - With one root list (e.g. `Papers`, with sublists for digital twin,
+    forecasting, research), new topics need no repo change.
+  - Adding or removing a root is a one-line edit plus apply. Both are
+    expected to be rare.
+- **Items:** each item paperbridge handed off sits, within the mirrored
+  trees, in exactly the collections of its bookmarks' lists. Moving a
+  bookmark moves the item within 15 minutes. Moving it inside a mirrored
+  tree in Zotero is undone by the next run. Its collections outside the
+  mirrored trees are left alone.
+- **Never touched:**
+  - items without a `Karakeep:` line, i.e. papers added in Zotero
+    directly. Bookmarking one later links it by DOI, and from then on it
+    follows Karakeep;
+  - collections outside the mirrored trees, and collections already in
+    the trash (the API lists them with `deleted: true`; the owner's
+    library has one);
+  - the tree of a root that's no longer mirrored, or whose Karakeep list
+    is gone. It stays as it is; delete it by hand if wanted.
+- **Removing:** inside a mirrored tree, a collection whose list is gone
+  goes to Zotero's **trash** (`PATCH {"deleted": true}`, restorable), but
+  only once it holds nothing at all: no items, not even trashed ones or
+  papers added directly, and no subcollections. Items are never deleted.
+- Collections are matched by their path of names, because Zotero
+  collections have no field to hold a list ID. A renamed list therefore
+  becomes a new collection, and the old one goes to the trash once
+  emptied.
 - Smart lists (saved searches) are skipped, because their contents shift
   on their own.
-- Bookmarks in no list stay unfiled.
 - Zotero has no manual order within a collection; it sorts by a column.
+- Tested live on 2026-10-16 with throwaway lists: file, move, remove a
+  list, rerun (no changes). The test collections are in Zotero's trash.
 
 **Sync back.**
 
@@ -505,8 +531,8 @@ Each step is done when it's deployed **and** verified from a LAN device
    then create the API key for paperbridge.
 5. **paperbridge v0** (handoff). GitHub Actions builds the image on `v*`
    tags; the version lives only in `pyproject.toml`.
-6. **paperbridge v1** (read-status sync back, lists → collections), then
-   v2 (highlights).
+6. **paperbridge v1** (read-status sync back; lists → collections came
+   early, in 0.2.0), then v2 (highlights).
 
 ## Repo layout (target)
 

@@ -13,6 +13,11 @@ Karakeep bookmark tagged `paper` but not `in-zotero`, it:
    creates the attachment item, so Zotero desktop downloads it like any synced file;
 4. tags the bookmark `in-zotero` and adds the Zotero links to its note.
 
+Then it mirrors the Karakeep lists named in `MIRROR_LISTS`, with their sublists, into Zotero
+collections: each handed-off paper sits in the collections of its bookmarks' lists, so moving a
+bookmark moves the paper. Papers added in Zotero directly, and collections outside those trees,
+are left alone (`src/paperbridge/mirror.py` has the rules).
+
 The tags and the Extra line are all its state, so a run can stop anywhere and the next one
 picks up where it left off. The full design and its reasons are in the repo's
 [CLAUDE.md](../../CLAUDE.md) and [README.md](../../README.md).
