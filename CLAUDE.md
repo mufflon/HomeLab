@@ -226,8 +226,27 @@ service must authenticate on its own.
         and its API `404` with `Host: dashboard.localhost`, Let's
         Encrypt's wildcard served.
       - No alert flipped through the WebDAV rollout or Traefik's restart.
-    - Still open: #6, Traefik chart 42, a major. Read its release notes
-      against the values `host/01-microk8s.sh` sets before merging.
+    - #6, Traefik chart 42 (a major), was closed unmerged: as proposed it
+      would have failed (see "Ingress"). It was superseded by 4b1db94,
+      which rewrote the script's Traefik step. That went live on
+      2026-10-16 at 23:46 UTC (Helm revision 5, Traefik v3.7.14).
+      - Before it: a local render diff against the live values, and a
+        server-side `helm upgrade --dry-run`.
+      - Verified from the LAN as in step 1:
+        - Karakeep `200`, WebDAV `401` without a login;
+        - HTTP `301` to HTTPS, an unknown name `404`;
+        - the dashboard and its API `404` with `Host: dashboard.localhost`;
+        - Let's Encrypt's wildcard served.
+      - The IngressClasses and the default TLSStore are unchanged.
+      - Traefik's log shows no errors and no alert flipped. The watchdog's
+        first run after the upgrade was green.
+      - New startup warnings in v3.7, harmless here:
+        - `aliasHeadersStrategy` unset, which matters for CGI, WSGI, PHP
+          or NGINX backends; ours are Node and Go;
+        - `SafeNaming` unset, with legacy names kept; we have no CRD
+          routers.
+
+        Setting both would only silence them.
     - On approval only: kubectl 1.37 (waits for MicroK8s 1.37) and
       Meilisearch 1.55.
   - Gotcha: `gh pr merge` refuses a PR that changes
