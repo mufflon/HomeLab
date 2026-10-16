@@ -201,14 +201,30 @@ service must authenticate on its own.
     chart 39.0.9 (and 42.0.0 as a major), Python 3.15 for paperbridge,
     digests for the three tag-only images (webdav, lego, kubectl), Actions
     pinned to SHAs. Meilisearch v1.55 and kubectl 1.37 wait for approval.
-- **Alerts** (2026-10-16, in progress; see "Alerts"):
-  - The watchdog is deployed and runs every 5 minutes, logging only until
-    `HEALTHCHECKS_API_KEY` is set. All checks pass.
-  - The failure paths were tried with one-off Jobs that override its
-    settings: a missing pool, a Traefik 404, a refused port.
-  - Waiting for the owner's healthchecks.io account and key. Then:
-    `scripts/secrets.sh`, `host/02-alerts.sh` (sudo), and one real alert
-    per check.
+- **Alerts: done**, every check tested live on 2026-10-16 (see "Alerts").
+  - The owner's healthchecks.io project has the read-write API key in
+    `.env`, and email as its only integration. The first watchdog run
+    created the six checks.
+  - The project also has the owner's own check `mini`, which the watchdog
+    leaves alone.
+  - `host/02-alerts.sh` ran with `test`:
+    - ZED posted its "ZFS device fault for pool alerttest" report (class
+      `statechange`, state `FAULTED`) to `zfs` within a second of
+      `zpool offline -f`.
+    - The next watchdog run reported `alerttest: DEGRADED`.
+    - After the pool was destroyed, the run after that set `zfs` up again.
+  - The other tests used throwaway objects in `monitoring`, deleted
+    afterwards: a suspended CronJob whose run exits 1, and a Deployment
+    whose pod exits 1.
+    - The crashing Deployment showed `Progressing=True
+      NewReplicaSetAvailable` with `Available=False`, so it counted at
+      once.
+    - A one-off watchdog Job also added an endpoint Traefik answers `404`,
+      and set `CERT_MIN_FRACTION=1`.
+    - `cronjobs`, `workloads`, `endpoints` and `certificate` each went
+      down, then up again on a later run.
+  - Heartbeat: the watchdog CronJob was suspended until `heartbeat` went
+    down, then resumed.
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because

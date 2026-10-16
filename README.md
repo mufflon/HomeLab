@@ -377,6 +377,10 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
 - **Clean shutdown on power loss.** There is a UPS, but it isn't connected
   to the server, so a long outage still ends in a hard power-off. A USB
   link plus NUT would fix that.
+- **Disk health beyond ZFS.** Alerts come from ZFS itself and from the
+  pool's state. There are no SMART checks (whether the USB enclosure
+  passes SMART through is unverified), and a USB reset that ZFS shrugs off
+  goes unnoticed.
 - **Off-site backup.** sanoid snapshots live on the same pool, so they
   protect against mistakes, not against losing the pool. Off-site copies
   (e.g. `syncoid` to another machine) are not set up.
