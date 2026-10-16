@@ -8,11 +8,11 @@ It's public because there's no reason for it not to be. You're welcome to
 read it or borrow from it. Nothing here is a product, though: it's tuned to
 one home network, one server and one person's reading habits.
 
-> **Status:** Karakeep, Zotero's file storage and Zotero's
-> translation-server run. paperbridge's handoff of papers from Karakeep to
-> Zotero is written and tested, but not yet deployed. Things marked
-> *(planned)* below aren't running yet. The detailed, current state is in
-> the "Status" section of [CLAUDE.md](CLAUDE.md).
+> **Status:** the research pipeline runs: Karakeep, Zotero's file
+> storage, and paperbridge's handoff of papers from Karakeep to Zotero.
+> Syncing reading status back is next. Things marked *(planned)* below
+> aren't running yet. The detailed, current state is in the "Status"
+> section of [CLAUDE.md](CLAUDE.md).
 
 ## What it's for
 
@@ -97,7 +97,7 @@ library sync, Let's Encrypt plus Loopia's API for certificates, and the
 web itself, for the pages being saved and for papers' metadata and
 open-access PDFs.
 
-### Day to day *(planned: once paperbridge is deployed)*
+### Day to day
 
 1. Bookmark a paper in Karakeep: its arXiv or doi.org link, the
    publisher's page, or the PDF itself. Tag it `paper`.
@@ -239,8 +239,7 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
 5. **Everything else:** `kubectl apply -k k8s/`.
    - Storage (StorageClass + PVs) and the lego certificate CronJob.
    - The research apps: WebDAV, translation-server, Karakeep with
-     Meilisearch and headless Chrome, and later the paperbridge CronJob
-     *(planned)*.
+     Meilisearch and headless Chrome, and the paperbridge CronJob.
    - No Helm charts and no CRDs of our own, so a single apply is enough.
 6. **First certificate:** run the CronJob once instead of waiting for its
    schedule:
@@ -265,7 +264,7 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
    - **Zotero desktop:** Settings → Account → File Syncing → WebDAV, URL
      `https://zotero-dav.home.threadsafe.se/`, user and password from
      `.env`, then "Verify Server".
-   - **paperbridge** *(planned)* needs the Karakeep key from above plus the Zotero
+   - **paperbridge** needs the Karakeep key from above plus the Zotero
      user ID and API key in `.env`, then `scripts/secrets.sh`. Until its
      Secret exists, each run of its CronJob fails at start, which is
      harmless.

@@ -30,9 +30,7 @@ spec:
           containers:
             - name: paperbridge
               # Built by .github/workflows/paperbridge.yml from services/paperbridge on a v* tag.
-              # PENDING: v0.1.0 isn't published yet. Pin its digest here, then add paperbridge to
-              # k8s/research/kustomization.yaml (until then, `kubectl apply -k k8s/` skips this).
-              image: ghcr.io/mufflon/paperbridge:0.1.0@sha256:PENDING
+              image: ghcr.io/mufflon/paperbridge:0.1.2@sha256:8c25a976a32a58720f81b03e68fda27ca7fa38e1a320f7b3aaa487cb24d44c66
               envFrom:
                 - configMapRef:
                     name: paperbridge
