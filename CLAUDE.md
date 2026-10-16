@@ -81,7 +81,7 @@ service must authenticate on its own.
     "Preprint PDF" downloaded from WebDAV and opens. So desktop picks up
     files paperbridge writes directly.
   - The CronJob runs `ghcr.io/mufflon/paperbridge` every 15 minutes:
-    0.1.2 at the end of step 5, 0.2.0 since. Its Secret comes from `.env`. In `scripts/secrets.sh`, a
+    0.1.2 at the end of step 5; 0.2.1 now. Its Secret comes from `.env`. In `scripts/secrets.sh`, a
     source key ending in `?` is optional (`UNPAYWALL_EMAIL`). The WebDAV
     login comes from the existing `zotero-webdav` Secret.
   - Live test, run in-cluster as Jobs made from the CronJob:
@@ -126,9 +126,18 @@ service must authenticate on its own.
   - On WebDAV, `77YMI7CV.zip` / `.prop` remain from step 2's deleted test
     item. Zotero desktop purges orphaned WebDAV files by itself.
 - **Lists → collections: done in paperbridge 0.2.0** (2026-10-16), ahead
-  of step 6 at the owner's request. It is deployed, but off until
-  `MIRROR_LISTS` names the list(s) to mirror (see paperbridge,
-  "Structure").
+  of step 6 at the owner's request. It is deployed and mirrors `Papers`
+  (see paperbridge, "Structure").
+- **paperbridge 0.2.1** (2026-10-16): a PDF taken out of Zotero and
+  uploaded to Karakeep links to its existing item instead of duplicating
+  it.
+  - That covers papers added in Zotero directly. It works through an
+    identifier in the PDF's text, or by title (see "v0 as built").
+  - Tested live: the test paper's PDF, downloaded from our WebDAV under
+    Zotero's file name, was uploaded as a Karakeep file bookmark with no
+    URL. It linked through its arXiv ID. With translation-server pointed
+    at a dead URL, a dry run linked it by the file name's title. The
+    throwaway bookmark and its Extra line were then removed.
   - Every run now reads the Zotero library, even with nothing to hand
     off. That is about one request per 100 items, plus the collections.
 - **Next: step 6, paperbridge v1:** read-status sync back.
@@ -404,8 +413,9 @@ Karakeep also keeps things that aren't papers, so only chosen lists are
 mirrored.
 
 - **Which lists:** `MIRROR_LISTS` in `k8s/research/paperbridge/paperbridge.env`
-  names top-level Karakeep lists, comma-separated. Empty means off, which
-  is the current state, pending the owner's choice.
+  names top-level Karakeep lists, comma-separated; empty means off. It is
+  set to `Papers` (owner, 2026-10-16), with sublists `Digital twin`,
+  `Forecasting` and `Research`. Zotero has the same tree.
   - Each named list becomes a top-level collection of the same name. Its
     manual sublists become subcollections, at any depth, created as they
     appear.
@@ -482,6 +492,16 @@ mirrored.
   3. Otherwise `/web <url>`, then a DOI found in the URL.
   4. A bookmarked PDF: the arXiv ID or DOI in its text, accepted only if
      the found title also appears in that text.
+- **Existing items**, so nothing is duplicated:
+  1. A match by DOI.
+  2. Otherwise a match by exact normalized title: the translated title,
+     the title in a Zotero-style file name (`Author - Year - Title.pdf`,
+     as when a PDF is taken out of Zotero), or Karakeep's title.
+  3. Only when nothing was translated: the earliest library title in the
+     first 1500 normalized characters of the PDF's text.
+  - Titles under 20 characters never match.
+  - A match gets a `Karakeep:` line added to its Extra, and our PDF only
+    if it has none.
 - arXiv preprints get their **v1 date** from arXiv's API, which fixes the
   step 3 gotcha.
 - No metadata: retry each run until the bookmark is
