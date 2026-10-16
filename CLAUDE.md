@@ -125,7 +125,9 @@ service must authenticate on its own.
     then Unpaywall.
   - On WebDAV, `77YMI7CV.zip` / `.prop` remain from step 2's deleted test
     item. Zotero desktop purges orphaned WebDAV files by itself.
-- **Next: step 6, paperbridge v1 (read-status sync back).**
+- **Next: step 6, paperbridge v1:** read-status sync back, and
+  Karakeep's lists mirrored as Zotero collections (see paperbridge,
+  "Structure").
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
@@ -391,6 +393,28 @@ doi.org / arxiv.org URLs.
 - Rules are set in the UI and stored in Karakeep's database, not in this
   repo.
 
+**Structure: Karakeep's lists are Zotero's collections** (v1; decided by
+the owner on 2026-10-16). There is one structure, and it is kept in
+Karakeep.
+
+- Every run mirrors it one-way into Zotero:
+  - a list becomes a top-level collection of the same name;
+  - a nested list becomes a subcollection;
+  - each handed-off item sits in exactly the collections that match its
+    bookmark's lists.
+- Moving a bookmark in Karakeep moves the item within 15 minutes.
+- Filing by hand in Zotero isn't supported. The next run puts the item
+  back where Karakeep says.
+- Collections are matched by name, because Zotero collections have no
+  field to hold a list ID. A renamed list therefore becomes a new
+  collection.
+- paperbridge deletes a collection only when it is empty and matches no
+  list. Deleting a collection never deletes items.
+- Smart lists (saved searches) are skipped, because their contents shift
+  on their own.
+- Bookmarks in no list stay unfiled.
+- Zotero has no manual order within a collection; it sorts by a column.
+
 **Sync back.**
 
 - **Read status:** when the Zotero Reading List plugin marks a paper Read,
@@ -481,7 +505,8 @@ Each step is done when it's deployed **and** verified from a LAN device
    then create the API key for paperbridge.
 5. **paperbridge v0** (handoff). GitHub Actions builds the image on `v*`
    tags; the version lives only in `pyproject.toml`.
-6. **paperbridge v1** (read-status sync back), then v2 (highlights).
+6. **paperbridge v1** (read-status sync back, lists → collections), then
+   v2 (highlights).
 
 ## Repo layout (target)
 

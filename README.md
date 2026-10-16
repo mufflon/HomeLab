@@ -37,6 +37,10 @@ annoyances:
      storage.
    - When a paper is marked read in Zotero, that flows back to Karakeep
      *(planned)*.
+   - Karakeep's lists decide how papers are filed in Zotero: each list is
+     a Zotero collection, and moving a bookmark in Karakeep moves the
+     paper in Zotero *(planned)*. There's one structure to maintain, and
+     it lives in Karakeep.
 
 A side benefit: everything lives at home, as plain files on our own disks.
 And because Karakeep keeps the full text, an AI assistant can read saved
