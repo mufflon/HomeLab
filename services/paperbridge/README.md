@@ -18,8 +18,13 @@ collections: each handed-off paper sits in the collections of its bookmarks' lis
 bookmark moves the paper. Papers added in Zotero directly, and collections outside those trees,
 are left alone (`src/paperbridge/mirror.py` has the rules).
 
-The tags and the Extra line are all its state, so a run can stop anywhere and the next one
-picks up where it left off. The full design and its reasons are in the repo's
+Last, it syncs every handed-off item with its bookmark(s) (`src/paperbridge/sync.py`): title,
+authors, date, abstract and comments both ways, through a three-way merge against a snapshot of
+the last-synced values (`STATE_PATH`), and the Reading List plugin's read status from Zotero to
+Karakeep. Files and structure only ever go Karakeep → Zotero.
+
+The tags, the Extra line and that snapshot are all its state, so a run can stop anywhere and
+the next one picks up where it left off. The full design and its reasons are in the repo's
 [CLAUDE.md](../../CLAUDE.md) and [README.md](../../README.md).
 
 ```bash

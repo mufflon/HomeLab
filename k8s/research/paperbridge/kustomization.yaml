@@ -1,9 +1,11 @@
 # paperbridge: hands Karakeep bookmarks tagged `paper` over to Zotero (see CLAUDE.md).
 # A CronJob, no Service or Ingress. Secrets: paperbridge (Karakeep and Zotero API keys) and
 # zotero-webdav (the WebDAV login it shares with Zotero desktop), from scripts/secrets.sh.
+# Its sync snapshot lives on the paperbridge volume (hddpool/k8s/paperbridge).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - pvc.yaml
   - cronjob.yaml
 # Non-secret settings; a generator so that editing paperbridge.env changes the next run.
 configMapGenerator:

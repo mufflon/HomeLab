@@ -140,11 +140,37 @@ service must authenticate on its own.
     throwaway bookmark and its Extra line were then removed.
   - Every run now reads the Zotero library, even with nothing to hand
     off. That is about one request per 100 items, plus the collections.
-- **Next: step 6, paperbridge v1:**
-  - read status, Zotero → Karakeep;
-  - metadata and comments, both ways;
-  - the plan is under paperbridge, "Sync". The rule it follows is at the
-    top of that section.
+- **Step 6, paperbridge v1 (0.3.0): done**, verified live on 2026-10-16.
+  It syncs read status Zotero → Karakeep, and metadata and comments both
+  ways (paperbridge, "Sync").
+  - Root step: the owner ran `host/00-prep.sh` once. It created
+    `hddpool/k8s/paperbridge`, owned 10004, with lz4, atime off and
+    sanoid snapshots. The CronJob mounts it at `/state`; the snapshot of
+    last-synced values is `/state/state.json`.
+  - The first sync, on the test paper's two bookmarks, gave the link
+    bookmark Zotero's authors and date, and the PDF bookmark the paper's
+    title. The run after that changed nothing.
+  - Live tests on the test paper, each reverted afterwards:
+    - a title edited in Karakeep reached Zotero and the other bookmark in
+      the same run;
+    - an abstract edited in Zotero reached the link bookmark (the PDF
+      bookmark has no description);
+    - a title edited on both sides: Zotero's won;
+    - a comment written in Karakeep created the "From Karakeep" note;
+    - editing that note in Zotero updated the bookmark's note, keeping
+      the Zotero links last;
+    - comments edited on both sides kept both texts with the dated
+      marker, on both sides;
+    - `Read_Status: Read` (the plugin's exact lines) archived both
+      bookmarks and tagged them `read-2026-10`; archived bookmarks are
+      still listed by tag, so they keep syncing;
+    - "To Read" undid it.
+  - Cleanup: the original title, abstract (re-fetched from
+    translation-server) and Extra were restored. The test note is in
+    Zotero's trash. The unused `read-2026-10` tag was deleted.
+  - The owner still has to install the Reading List plugin in Zotero
+    desktop for read status to start flowing.
+- **Next: paperbridge v2:** annotations → Karakeep.
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
@@ -321,6 +347,7 @@ The child datasets are created once on the host with sudo:
 | `hddpool/k8s/karakeep` | Karakeep `DATA_DIR` (SQLite + assets) | yes |
 | `hddpool/k8s/meilisearch` | search index | no (rebuildable from Karakeep) |
 | `hddpool/k8s/certs` | lego account + certificates (private keys, mode 0700) | yes |
+| `hddpool/k8s/paperbridge` | paperbridge's sync snapshot (`state.json`) | yes |
 
 Each one is a `local` PersistentVolume (StorageClass `zfs-local`,
 `kubernetes.io/no-provisioner`, `WaitForFirstConsumer`, node affinity to
@@ -335,6 +362,7 @@ the UID its app runs as. The manifests must set the same
 - **meilisearch:** 10002. Same.
 - **certs:** 10003, for lego. Same.
 - **karakeep:** root. Its s6-overlay `/init` needs root.
+- **paperbridge:** 10004. Our own image, built to run as non-root.
 
 Image users were read from the registry configs on 2026-10-15.
 
@@ -356,7 +384,7 @@ are in `ingress`.
 | karakeep | `ghcr.io/karakeep-app/karakeep` | `karakeep.home.threadsafe.se` | `karakeep` |
 | meilisearch | `getmeili/meilisearch:v1.41.0`, the version Karakeep's own manifests pin (newest upstream is v1.55) | ClusterIP only | `meilisearch` |
 | chrome | `ghcr.io/karakeep-app/karakeep-chrome` (runs as 65534) | ClusterIP only | none |
-| paperbridge | `ghcr.io/mufflon/paperbridge`, built from `services/paperbridge` on `v*` tags (the version is in its `pyproject.toml`), pinned by digest; runs as 10004 | CronJob every 15 min, no ingress | none: v0's state is Karakeep tags and Zotero's `Extra` |
+| paperbridge | `ghcr.io/mufflon/paperbridge`, built from `services/paperbridge` on `v*` tags (the version is in its `pyproject.toml`), pinned by digest; runs as 10004 | CronJob every 15 min, no ingress | `paperbridge` (the sync's snapshot); the handoff's state is Karakeep tags and Zotero's `Extra` |
 
 **Zotero WebDAV.** One user, basic auth, password read from the Secret
 through `{env}`. It is plain rather than bcrypt because the server checks
@@ -384,9 +412,12 @@ the governing rule; everything below follows from it.
   duplicate (0.2.1, tested).
 - Comments and metadata may sync both ways (step 6, "Sync" below).
 
-A Python CronJob, every 15 minutes. It must be idempotent. In v0, tags and
-Zotero's `Extra` field carry all state. v1 adds a small snapshot for
-two-way sync (below).
+A Python CronJob, every 15 minutes. It must be idempotent. Tags and Zotero's
+`Extra` field carry the handoff's state. Since v1 (0.3.0), a snapshot of
+last-synced values serves the two-way sync (below).
+- If `state.json` is lost, every pair has a first sync again, where
+  Zotero's value wins. Karakeep-side edits made since the last run would
+  then be lost; restore the file from a sanoid snapshot instead.
 
 **Handoff, for each bookmark tagged `paper` but not `in-zotero`:**
 
@@ -466,8 +497,8 @@ mirrored.
 - Tested live on 2026-10-16 with throwaway lists: file, move, remove a
   list, rerun (no changes). The test collections are in Zotero's trash.
 
-**Sync (step 6; planned, not built).** Comments and metadata sync both
-ways. Files and structure don't (see the rule at the top).
+**Sync (step 6; built in 0.3.0, `sync.py`).** Comments and metadata sync
+both ways. Files and structure don't (see the rule at the top).
 
 - **State is needed.** To sync both ways, paperbridge has to know which
   side changed since the last sync.
@@ -497,6 +528,15 @@ ways. Files and structure don't (see the rule at the top).
 - **Read status:** Zotero → Karakeep. When the Zotero Reading List plugin
   marks a paper Read, archive the bookmark in Karakeep and add a
   read-date tag. This replaces the separate read-date CronJob idea.
+  - The plugin (v1.7.1, checked in its source on 2026-10-16) writes
+    `Read_Status: <name>` and `Read_Status_Date: <ISO time>` lines into
+    Extra, replacing only its own lines.
+  - `READ_STATUS` (default `Read`) is the status name that counts, since
+    the plugin's names are configurable.
+  - The tag is `READ_TAG_FORMAT` (`read-%Y-%m`) of `Read_Status_Date`:
+    monthly, so the tag list stays short. Zotero keeps the exact date.
+  - Leaving that status unarchives the bookmark and removes the tag.
+    paperbridge remembers which tag it applied.
 
 **Edge cases and intent.**
 
@@ -590,9 +630,9 @@ Each step is done when it's deployed **and** verified from a LAN device
    then create the API key for paperbridge.
 5. **paperbridge v0** (handoff). GitHub Actions builds the image on `v*`
    tags; the version lives only in `pyproject.toml`.
-6. **paperbridge v1**: read status back, plus metadata and comments both
-   ways (lists → collections came early, in 0.2.0). Then v2: annotations
-   → Karakeep.
+6. **paperbridge v1** (0.3.0, done): read status back, plus metadata and
+   comments both ways. Lists → collections came early, in 0.2.0. Then
+   v2: annotations → Karakeep.
 
 ## Repo layout (target)
 
@@ -658,7 +698,5 @@ it.
 
 - VPN clients resolve `*.home.threadsafe.se` to the LAN IP and reach it.
   The router itself was verified on 2026-10-16.
-- Where the Reading List plugin stores status (`Extra`, a tag, or
-  something else).
 - Meilisearch: stay on Karakeep's pinned v1.41.0, or verify a newer server
   with Karakeep's client first.

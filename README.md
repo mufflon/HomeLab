@@ -9,9 +9,9 @@ read it or borrow from it. Nothing here is a product, though: it's tuned to
 one home network, one server and one person's reading habits.
 
 > **Status:** the research pipeline runs: Karakeep, Zotero's file
-> storage, and paperbridge's handoff of papers from Karakeep to Zotero.
-> Syncing reading status back is next. Things marked *(planned)* below
-> aren't running yet. The detailed, current state is in the "Status"
+> storage, and paperbridge, which hands papers to Zotero and keeps both
+> sides in sync. Copying Zotero highlights into Karakeep is next. Things
+> marked *(planned)* below aren't running yet. The detailed, current state is in the "Status"
 > section of [CLAUDE.md](CLAUDE.md).
 
 ## What it's for
@@ -35,8 +35,10 @@ annoyances:
    - A bookmark tagged `paper` in Karakeep becomes a complete Zotero item,
      with metadata looked up automatically and the PDF placed in Zotero's
      storage.
-   - When a paper is marked read in Zotero, that flows back to Karakeep
-     *(planned)*.
+   - When a paper is marked read in Zotero, Karakeep archives the
+     bookmark and tags it with the month it was read.
+   - Titles, authors, dates, abstracts and comments stay in sync both
+     ways.
    - Karakeep's lists decide how papers are filed in Zotero. The lists
      chosen for it, with their sublists, appear in Zotero as collections,
      and moving a bookmark in Karakeep moves the paper in Zotero. There's
@@ -112,6 +114,11 @@ open-access PDFs.
 3. Zotero desktop or mobile shows the paper after its next sync. If the
    bookmark is in a list under one of the mirrored lists, the paper is in
    the matching collection; move the bookmark, and the paper follows.
+4. Comment wherever is handy: the bookmark's note in Karakeep, or the
+   paper's "From Karakeep" note in Zotero. Each shows up on the other side.
+   Corrections to the title, authors or abstract cross over the same way.
+5. Mark the paper Read in Zotero (with the Reading List plugin). Karakeep
+   then archives the bookmark and tags it, e.g. `read-2026-10`.
 
 A paper that's already in Zotero (same DOI) is linked, not duplicated. If
 no translator recognises a page, paperbridge keeps trying for a day, then
@@ -165,9 +172,12 @@ creates a minimal item tagged `needs-metadata` to fix by hand.
   - Syncing files and folders in two directions invites conflicts. So
     PDFs and Karakeep's lists flow one way, Karakeep → Zotero, and
     Zotero's collections are never organized by hand.
-  - Comments and metadata are different: those will sync both ways
-    *(planned)*, field by field, with Zotero winning when both sides
-    changed the same thing.
+  - Comments and metadata are different: those sync both ways, field by
+    field. When both sides changed the same field, Zotero wins, since
+    that's where bibliographic data gets curated. Comments edited on both
+    sides keep both texts, so nothing is lost.
+  - To tell which side changed, paperbridge keeps a small snapshot of
+    the last-synced values on its own ZFS dataset.
   - Karakeep holds more than papers. Only the lists named in
     `MIRROR_LISTS` (in `k8s/research/paperbridge/paperbridge.env`) are
     mirrored, with everything under them.
@@ -248,7 +258,8 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
 1. **`host/00-prep.sh`** sets up storage:
    - the ZFS datasets under `hddpool/k8s`, each owned by the UID its app
      runs as;
-   - sanoid snapshots for `zotero-webdav`, `karakeep` and `certs`.
+   - sanoid snapshots for `zotero-webdav`, `karakeep`, `certs` and
+     `paperbridge`.
 2. **`host/01-microk8s.sh`** sets up the cluster:
    - MicroK8s `1.36/stable`;
    - the Traefik ingress addon, using the wildcard certificate as the
@@ -286,7 +297,9 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
      paperbridge, put it in `.env` and rerun `scripts/secrets.sh`.
    - **Zotero desktop:** Settings → Account → File Syncing → WebDAV, URL
      `https://zotero-dav.home.threadsafe.se/`, user and password from
-     `.env`, then "Verify Server".
+     `.env`, then "Verify Server". For read status, also install the
+     [Reading List](https://github.com/Dominic-DallOsto/zotero-reading-list)
+     plugin.
    - **paperbridge** needs the Karakeep key from above plus the Zotero
      user ID and API key in `.env`, then `scripts/secrets.sh`. Until its
      Secret exists, each run of its CronJob fails at start, which is

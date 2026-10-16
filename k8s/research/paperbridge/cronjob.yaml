@@ -1,5 +1,5 @@
-# Every 15 minutes: one pass over Karakeep, then exit. Idempotent; its state is Karakeep tags and
-# the Zotero item's Extra field. Run it now:
+# Every 15 minutes: one pass over Karakeep, then exit. Idempotent; its state is Karakeep tags,
+# the Zotero item's Extra field, and the sync's snapshot on the paperbridge volume. Run it now:
 #   kubectl -n research create job paperbridge-now --from=cronjob/paperbridge
 # Look first without changing anything: add `args: [--dry-run]` to a copy of the job.
 apiVersion: batch/v1
@@ -30,7 +30,7 @@ spec:
           containers:
             - name: paperbridge
               # Built by .github/workflows/paperbridge.yml from services/paperbridge on a v* tag.
-              image: ghcr.io/mufflon/paperbridge:0.2.1@sha256:fd0086f16c61f57ac8ce9b077fecf28417a1483337829a0f1df79ef060e628a7
+              image: ghcr.io/mufflon/paperbridge:0.3.0@sha256:4746ec4b68a2d3a585772d2a70fa1badfec81bd098d977ec9767279124d61b17
               envFrom:
                 - configMapRef:
                     name: paperbridge
@@ -41,8 +41,14 @@ spec:
               resources:
                 requests: {cpu: 50m, memory: 128Mi}
                 limits: {memory: 1Gi}     # PDFs are held in memory, up to 200 MB each
+              volumeMounts:
+                - {name: state, mountPath: /state}
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
                 capabilities:
                   drop: [ALL]
+          volumes:
+            - name: state
+              persistentVolumeClaim:
+                claimName: paperbridge
