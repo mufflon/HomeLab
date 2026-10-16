@@ -129,13 +129,23 @@ def _split(items: list[dict]) -> tuple[dict, list[dict]] | None:
     return {k: v for k, v in main.items() if k not in drop}, notes
 
 
-def _normalize(s: str) -> str:
+def normalize(s: str) -> str:
+    """Lower case, words only: for comparing titles across sources."""
     return " ".join(re.sub(r"[^\w]+", " ", s.lower()).split())
 
 
 def _title_in(title: str, text: str) -> bool:
-    title = _normalize(title)
-    return bool(title) and title in _normalize(text[:TEXT_SCAN])
+    title = normalize(title)
+    return bool(title) and title in normalize(text[:TEXT_SCAN])
+
+
+ZOTERO_FILENAME = re.compile(r"^.+? - \d{4} - (?P<title>.+)\.pdf$", re.I)
+
+
+def filename_title(name: str | None) -> str | None:
+    """The title in a file named the way Zotero names PDFs: "Author et al. - 2017 - Title.pdf"."""
+    match = ZOTERO_FILENAME.match(name or "")
+    return match.group("title") if match else None
 
 
 def arxiv_submission_date(web: httpx.Client, arxiv_id: str) -> str | None:

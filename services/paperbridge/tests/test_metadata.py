@@ -1,5 +1,6 @@
 from paperbridge.metadata import (
     Identifiers,
+    filename_title,
     _split,
     fallback_item,
     identifiers_in_text,
@@ -87,3 +88,9 @@ def test_fallback_item():
     item = fallback_item(bookmark, None)
     assert item["itemType"] == "document" and item["title"] == "x.pdf"
     assert {"tag": "needs-metadata"} in item["tags"]
+
+
+def test_filename_title():
+    assert filename_title("Vaswani et al. - 2017 - Attention Is All You Need.pdf") == "Attention Is All You Need"
+    assert filename_title("A and B - 2020 - Title - With a Dash.pdf") == "Title - With a Dash"
+    assert filename_title("paper.pdf") is None and filename_title(None) is None

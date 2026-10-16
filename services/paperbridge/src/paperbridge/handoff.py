@@ -25,15 +25,19 @@ from .metadata import (
     Identifiers,
     arxiv_submission_date,
     fallback_item,
+    filename_title,
     identifiers_in_url,
     identifiers_of_item,
     item_doi,
     lookup,
+    normalize,
 )
 
 log = logging.getLogger(__name__)
 
 KEY_ALPHABET = "23456789ABCDEFGHIJKLMNPQRSTUVWXYZ"  # Zotero object keys: 8 of these
+MIN_TITLE = 20  # normalized characters: shorter titles ("Introduction") match too much
+PDF_HEAD = 1500  # normalized characters of a PDF's text where its own title is
 
 
 def new_key() -> str:
@@ -148,14 +152,9 @@ class Handoff:
         if parent:
             log.info("already in Zotero as %s (from an earlier run)", parent["key"])
         else:
-            found = self._metadata(bookmark, url, text)
-            if found is None:
-                return
-            item, notes = found
-            doi = item_doi(item)
-            parent = self._find(lambda i: item_doi(i) == doi) if doi else None
+            found = self._lookup(url, text)
+            parent = self._existing(found[0] if found else None, bookmark, text)
             if parent:
-                log.info("DOI %s is already in Zotero as %s; linking to it", doi, parent["key"])
                 extra = append_line(parent.get("extra"), marker)
                 version = self._write(
                     f"add {marker!r} to the Extra of {parent['key']}",
@@ -166,6 +165,10 @@ class Handoff:
                 )
                 parent.update(extra=extra, version=version or parent["version"])
             else:
+                found = found or self._fallback(bookmark, url)
+                if found is None:
+                    return
+                item, notes = found
                 # version 0: "new" to Zotero's API, which requires it with a client-chosen key.
                 parent = {
                     **item,
@@ -204,7 +207,8 @@ class Handoff:
     def _find(self, match: Callable[[dict], bool]) -> dict | None:
         return next((i for i in self._library() if match(i)), None)
 
-    def _metadata(self, bookmark: dict, url: str | None, text: str | None):
+    def _lookup(self, url: str | None, text: str | None):
+        """The paper's item and notes from translation-server, or None."""
         found = lookup(self.ts, url, text)
         if found:
             item, notes = found
@@ -214,7 +218,41 @@ class Handoff:
                 if first and first != item.get("date"):
                     log.info("date %s -> %s (arXiv v1)", item.get("date"), first)
                     item["date"] = first
-            return item, notes
+        return found
+
+    def _existing(self, item: dict | None, bookmark: dict, text: str | None) -> dict | None:
+        """The paper's item if it's already in Zotero, e.g. added there directly and now
+        bookmarked from a PDF taken out of Zotero.
+
+        By DOI, then by exact title: the translated one, the one in a Zotero-style file name, or
+        Karakeep's. Only when nothing was translated, also by the earliest library title on the
+        PDF's first page; with a translation, a title cited there must not win.
+        """
+        doi = item_doi(item) if item else None
+        if doi and (hit := self._find(lambda i: item_doi(i) == doi)):
+            log.info("DOI %s is already in Zotero as %s; linking to it", doi, hit["key"])
+            return hit
+        content = bookmark.get("content") or {}
+        for title in (item or {}).get("title"), filename_title(content.get("fileName")), bookmark.get("title"):
+            wanted = normalize(title or "")
+            if len(wanted) >= MIN_TITLE and (hit := self._find(lambda i: normalize(i.get("title") or "") == wanted)):
+                log.info("title %r is already in Zotero as %s; linking to it", title, hit["key"])
+                return hit
+        if item is None and text:
+            head = normalize(text[: PDF_HEAD * 2])[:PDF_HEAD]
+            hits = [
+                (head.find(t), -len(t), i["key"], i)
+                for i in self._library()
+                if len(t := normalize(i.get("title") or "")) >= MIN_TITLE and t in head
+            ]
+            if hits:
+                hit = min(hits)[3]
+                log.info("the PDF starts with %r, already in Zotero as %s; linking to it", hit.get("title"), hit["key"])
+                return hit
+        return None
+
+    def _fallback(self, bookmark: dict, url: str | None):
+        """A minimal item once the bookmark is past the grace period; None until then."""
         age_hours = (self.now() - datetime.fromisoformat(bookmark["createdAt"]).timestamp()) / 3600
         if age_hours < self.cfg.metadata_grace_hours:
             log.warning(

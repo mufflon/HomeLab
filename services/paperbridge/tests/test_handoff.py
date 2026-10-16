@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from paperbridge.config import Config
-from paperbridge.handoff import Handoff
+from paperbridge.handoff import Handoff, tag_names
 
 NOW = datetime.fromisoformat("2026-10-16T12:00:00Z").timestamp()
 PDF = b"%PDF-1.7 the paper"
@@ -290,3 +290,57 @@ def test_dry_run_writes_nothing(world):
     handoff.dry_run = True
     assert handoff.run() == 0
     assert zotero.items == {} and dav.files == {} and karakeep.writes == []
+
+
+def zotero_only(zotero, title="Attention Is All You Need"):
+    """A paper added in Zotero directly: no Karakeep line, no DOI, its own PDF."""
+    zotero.items["OWN00001"] = {"key": "OWN00001", "version": 5, "itemType": "journalArticle", "title": title, "extra": ""}
+    zotero.items["OWNPDF01"] = {
+        "key": "OWNPDF01", "version": 5, "itemType": "attachment", "parentItem": "OWN00001",
+        "linkMode": "imported_file", "contentType": "application/pdf",
+    }
+
+
+def uploaded(file_name, text):
+    b = bookmark("up1", None)
+    b["content"] = {"type": "asset", "assetType": "pdf", "assetId": "a1", "fileName": file_name, "content": text}
+    return b
+
+
+@pytest.mark.parametrize(
+    "file_name, text",
+    [
+        ("Vaswani et al. - 2017 - Attention Is All You Need.pdf", "no identifiers here"),  # Zotero's file name
+        ("paper.pdf", "Provided proper attribution...\nAttention Is All You\nNeed\nAshish Vaswani"),  # page 1
+    ],
+)
+def test_a_pdf_taken_out_of_zotero_links_to_its_item(world, file_name, text):
+    handoff, karakeep, zotero, dav = world
+    zotero_only(zotero)
+    karakeep.bookmarks = {"up1": uploaded(file_name, text)}
+    handoff.ts = FakeTS({})  # nothing to translate
+    assert handoff.run() == 0
+    assert sorted(zotero.items) == ["OWN00001", "OWNPDF01"] and dav.files == {}  # no duplicate, no second PDF
+    assert zotero.items["OWN00001"]["extra"] == "Karakeep: https://karakeep.example/dashboard/preview/up1"
+    assert "in-zotero" in tag_names(karakeep.bookmarks["up1"])
+
+
+def test_a_title_cited_on_page_one_does_not_win(world):
+    handoff, karakeep, zotero, dav = world
+    zotero_only(zotero)
+    text = "Some Newer Paper About Transformers\nWe build on Attention Is All You Need. doi:10.1000/newer"
+    karakeep.bookmarks = {"up1": uploaded("newer.pdf", text)}
+    handoff.ts = FakeTS({"10.1000/newer": [{"itemType": "journalArticle", "title": "Some Newer Paper About Transformers"}]})
+    handoff.run()
+    titles = sorted(i.get("title") for i in zotero.items.values() if "parentItem" not in i)
+    assert titles == ["Attention Is All You Need", "Some Newer Paper About Transformers"]
+
+
+def test_short_titles_are_not_matched(world):
+    handoff, karakeep, zotero, dav = world
+    zotero_only(zotero, title="Deep learning")
+    karakeep.bookmarks = {"up1": uploaded("A - 2015 - Deep learning.pdf", "Deep learning\nY. LeCun")}
+    karakeep.bookmarks["up1"]["createdAt"] = "2026-10-01T00:00:00.000Z"  # past the grace period
+    handoff.ts = FakeTS({})
+    handoff.run()
+    assert len([i for i in zotero.items.values() if "parentItem" not in i]) == 2  # a new, minimal item
