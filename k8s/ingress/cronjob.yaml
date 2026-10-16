@@ -30,7 +30,7 @@ spec:
               type: RuntimeDefault
           initContainers:
             - name: lego
-              image: goacme/lego:v5.5.2
+              image: goacme/lego:v5.5.2@sha256:1944e8c36055beec47c7de6f15202b41128be75eea0ffa257f0c14d93c5155fd
               # `run` gets a certificate, or renews it when due (lego v5).
               args:
                 - run
@@ -56,7 +56,7 @@ spec:
                   drop: [ALL]
           containers:
             - name: publish
-              image: alpine/kubectl:1.36.4
+              image: alpine/kubectl:1.36.4@sha256:a2cd8ee034cbe04d651e565b3373299b31921de5c2af86490559e21b3e197808
               command: [/bin/sh, -c]
               args:
                 - |
