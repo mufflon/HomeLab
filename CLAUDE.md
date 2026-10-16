@@ -204,6 +204,18 @@ service must authenticate on its own.
     the local dry run.
   - Then: lock-file maintenance off (there are no lock files), and the
     CI's Python moved into the paperbridge group.
+  - The first PRs were opened early, by ticking the dashboard's
+    "create all awaiting schedule PRs" box. None merged yet:
+    - #2 GitHub Actions: pinned to SHAs. CI green.
+    - #3 cluster images: digests for lego, kubectl and webdav; the
+      watchdog on Python 3.15.
+    - #4 host scripts: Traefik chart 39.0.9.
+    - #5 paperbridge: Python 3.15 in the Dockerfile and CI. CI green, so
+      the tests pass on 3.15.
+    - #6 Traefik chart 42, a major: read its release notes against the
+      values `host/01-microk8s.sh` sets before merging.
+    - On approval only: kubectl 1.37 (waits for MicroK8s 1.37) and
+      Meilisearch 1.55.
   - A local dry run found every pin. First updates it proposed: Traefik
     chart 39.0.9 (and 42.0.0 as a major), Python 3.15 for paperbridge,
     digests for the three tag-only images (webdav, lego, kubectl), Actions

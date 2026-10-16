@@ -4,7 +4,7 @@
 set -euo pipefail
 
 CHANNEL=1.36/stable
-TRAEFIK_CHART=39.0.8                     # the version MicroK8s 1.36's addon pins; bump deliberately
+TRAEFIK_CHART=39.0.8                     # overrides the addon's own pin (39.0.8 in MicroK8s 1.36); Renovate proposes bumps
 DEFAULT_CERT=ingress/wildcard-home-tls   # written by the lego CronJob (k8s/ingress)
 OWNER=${SUDO_USER:-mufflon}
 
