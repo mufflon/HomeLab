@@ -173,7 +173,10 @@ service must authenticate on its own.
     paper Read in Zotero archived both linked bookmarks on the next run and
     tagged them `read-2026-10`. The paper is left marked Read: it was a real
     read.
-- **Next: paperbridge v2:** annotations → Karakeep.
+- **paperbridge v2 (0.4.0): deployed** 2026-10-16, highlights Zotero →
+  Karakeep (paperbridge, "Sync", Annotations). With no annotations in the
+  library yet, runs change nothing. The live test, with the owner's
+  throwaway highlights on the test paper, is still to do.
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
@@ -523,11 +526,26 @@ both ways. Files and structure don't (see the rule at the top).
     out.
   - Changed on both sides: keep both texts, with a conflict marker.
     Nothing is ever dropped.
-- **Annotations** (Zotero highlights and their comments): one way,
-  Zotero → Karakeep, into the bookmark. Zotero wins, because a
-  highlight's position in the PDF can't be represented in Karakeep. A
-  Karakeep search then also finds highlighted passages. This is v2 in
-  the build order.
+- **Annotations** (v2, 0.4.0): Zotero highlights and their comments go
+  one way, Zotero → Karakeep, into the bookmark's note. A Karakeep search
+  then also finds highlighted passages.
+  - The note reads: comments, then a `Highlights from Zotero:` section,
+    then the Zotero links last.
+  - Each entry is `- p. 3: "quoted text"`, with the comment on indented
+    lines below, in reading order (`annotationSortIndex`). Sticky notes
+    and other annotations without text show `- p. 7, note: comment`. An
+    annotation with neither text nor comment is left out.
+  - The two-way comment sync only sees the part above the section.
+  - **No conflicts:** the section is rebuilt from Zotero every run, so
+    anything typed inside it in Karakeep is undone.
+  - **Nothing flows back.** Karakeep's own highlights are anchored to
+    offsets in its text view of a page. A Zotero annotation needs a
+    position on a PDF page, and there is no reliable mapping between the
+    two. Karakeep's highlights stay searchable in Karakeep.
+  - Cost: annotations and attachments are read whole (`itemType=...`),
+    but only when the library version moved since the last build. Each
+    item's section is cached in `state.json`. A run that writes to
+    Zotero moves the version itself, so the run after it re-reads once.
 - **Read status:** Zotero → Karakeep. When the Zotero Reading List plugin
   marks a paper Read, archive the bookmark in Karakeep and add a
   read-date tag. This replaces the separate read-date CronJob idea.
@@ -635,7 +653,7 @@ Each step is done when it's deployed **and** verified from a LAN device
    tags; the version lives only in `pyproject.toml`.
 6. **paperbridge v1** (0.3.0, done): read status back, plus metadata and
    comments both ways. Lists → collections came early, in 0.2.0. Then
-   v2: annotations → Karakeep.
+   **v2** (0.4.0): annotations → Karakeep.
 
 ## Repo layout (target)
 

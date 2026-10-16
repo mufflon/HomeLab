@@ -10,7 +10,7 @@ one home network, one server and one person's reading habits.
 
 > **Status:** the research pipeline runs: Karakeep, Zotero's file
 > storage, and paperbridge, which hands papers to Zotero and keeps both
-> sides in sync. Copying Zotero highlights into Karakeep is next. Things
+> sides in sync, Zotero highlights included. Things
 > marked *(planned)* below aren't running yet. The detailed, current state is in the "Status"
 > section of [CLAUDE.md](CLAUDE.md).
 
@@ -39,6 +39,8 @@ annoyances:
      bookmark and tags it with the month it was read.
    - Titles, authors, dates, abstracts and comments stay in sync both
      ways.
+   - Highlights made in Zotero are copied into the Karakeep bookmark's
+     note, so searching Karakeep also finds highlighted passages.
    - Karakeep's lists decide how papers are filed in Zotero. The lists
      chosen for it, with their sublists, appear in Zotero as collections,
      and moving a bookmark in Karakeep moves the paper in Zotero. There's
@@ -117,7 +119,9 @@ open-access PDFs.
 4. Comment wherever is handy: the bookmark's note in Karakeep, or the
    paper's "From Karakeep" note in Zotero. Each shows up on the other side.
    Corrections to the title, authors or abstract cross over the same way.
-5. Mark the paper Read in Zotero (with the Reading List plugin). Karakeep
+5. Highlight and annotate in Zotero. The highlights, with page numbers and
+   your comments on them, appear in the bookmark's note in Karakeep.
+6. Mark the paper Read in Zotero (with the Reading List plugin). Karakeep
    then archives the bookmark and tags it, e.g. `read-2026-10`.
 
 A paper that's already in Zotero (same DOI) is linked, not duplicated. If
@@ -178,6 +182,10 @@ creates a minimal item tagged `needs-metadata` to fix by hand.
     sides keep both texts, so nothing is lost.
   - To tell which side changed, paperbridge keeps a small snapshot of
     the last-synced values on its own ZFS dataset.
+  - Highlights are the exception: they go one way, Zotero → Karakeep. A
+    Zotero highlight is anchored to a spot on a PDF page, and Karakeep's
+    are anchored to its text of a web page. There's no reliable way to
+    turn one into the other.
   - Karakeep holds more than papers. Only the lists named in
     `MIRROR_LISTS` (in `k8s/research/paperbridge/paperbridge.env`) are
     mirrored, with everything under them.
