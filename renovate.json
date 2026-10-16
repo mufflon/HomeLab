@@ -1,0 +1,109 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Weekly, grouped update PRs for everything this repo pins; never automerged. See CLAUDE.md, 'Dependency updates'.",
+  "extends": ["config:best-practices"],
+  "timezone": "Europe/Stockholm",
+  "schedule": ["* * * * 1"],
+  "automerge": false,
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 8,
+  "kubernetes": {
+    "managerFilePatterns": ["/^k8s/.+\\.yaml$/"]
+  },
+  "poetry": {
+    "description": "paperbridge builds with hatchling; off, so the pep621 manager also tracks build-system.requires.",
+    "enabled": false
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The upstream commit our translation-server image is built from: follow zotero/translation-server master.",
+      "managerFilePatterns": ["/^images/translation-server/UPSTREAM_REF$/"],
+      "matchStrings": ["^(?<currentDigest>[0-9a-f]{40})\\s*$"],
+      "depNameTemplate": "zotero/translation-server",
+      "packageNameTemplate": "https://github.com/zotero/translation-server",
+      "datasourceTemplate": "git-refs",
+      "currentValueTemplate": "master"
+    },
+    {
+      "customType": "regex",
+      "description": "The MicroK8s snap channel in host/01-microk8s.sh. canonical/microk8s publishes a GitHub release (v1.36) when a minor reaches stable.",
+      "managerFilePatterns": ["/^host/01-microk8s\\.sh$/"],
+      "matchStrings": ["CHANNEL=(?<currentValue>\\d+\\.\\d+)/stable"],
+      "depNameTemplate": "microk8s",
+      "packageNameTemplate": "canonical/microk8s",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>\\d+\\.\\d+)$",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "The Traefik chart that host/01-microk8s.sh installs through the MicroK8s ingress addon.",
+      "managerFilePatterns": ["/^host/01-microk8s\\.sh$/"],
+      "matchStrings": ["TRAEFIK_CHART=(?<currentValue>\\S+)"],
+      "depNameTemplate": "traefik",
+      "datasourceTemplate": "helm",
+      "registryUrlTemplate": "https://traefik.github.io/charts"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Cluster images: one PR. Takes effect with kubectl apply -k k8s/.",
+      "matchFileNames": ["k8s/**"],
+      "groupName": "cluster images",
+      "prBodyNotes": ["To deploy after merging: `kubectl apply -k k8s/`, then check the changed apps (CLAUDE.md, Status)."]
+    },
+    {
+      "description": "paperbridge's Python packages and base image: one PR, tested by the paperbridge workflow.",
+      "matchFileNames": ["services/paperbridge/**"],
+      "groupName": "paperbridge dependencies",
+      "prBodyNotes": ["Nothing changes in the cluster until the next paperbridge release: bump `version` in `services/paperbridge/pyproject.toml`, push the matching `vX.Y.Z` tag, then pin the new image digest in `k8s/research/paperbridge/cronjob.yaml` and apply."]
+    },
+    {
+      "description": "GitHub Actions: one PR, pinned to commit digests (config:best-practices).",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Host scripts: take effect only when the owner reruns them on the server with sudo.",
+      "matchFileNames": ["host/**"],
+      "groupName": "host scripts",
+      "prBodyNotes": ["To deploy after merging: copy `host/01-microk8s.sh` to the server and run it with sudo (README, Rebuild)."]
+    },
+    {
+      "description": "translation-server: merging rebuilds our image from the new upstream commit.",
+      "matchDepNames": ["zotero/translation-server"],
+      "commitMessageTopic": "translation-server upstream",
+      "prBodyNotes": ["Merging builds `ghcr.io/mufflon/translation-server:<first 12 chars of the commit>` (`.github/workflows/translation-server.yml`). Then put that tag and its digest into `k8s/research/translation-server/deployment.yaml` and apply."]
+    },
+    {
+      "description": "Our own images: their tags and digests are set when we release them, not by Renovate.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["ghcr.io/mufflon/**"],
+      "enabled": false
+    },
+    {
+      "description": "karakeep-chrome tags are <Chrome version>-r<n>; ignore the per-architecture -amd64/-arm64 tags.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["ghcr.io/karakeep-app/karakeep-chrome"],
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\.(?<build>\\d+)-r(?<revision>\\d+)$"
+    },
+    {
+      "description": "Meilisearch stays on the version Karakeep pins until a newer one is verified with Karakeep's client: PRs only on request from the dashboard.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["getmeili/meilisearch"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "groupName": "meilisearch",
+      "dependencyDashboardApproval": true,
+      "prBodyNotes": ["Karakeep pins its own Meilisearch version. Check Karakeep's docker-compose for the version it uses before merging."]
+    },
+    {
+      "description": "A Kubernetes minor upgrades the cluster: the MicroK8s channel and kubectl in the lego CronJob move together, on request from the dashboard.",
+      "matchPackageNames": ["microk8s", "alpine/kubectl"],
+      "matchUpdateTypes": ["major", "minor"],
+      "groupName": "Kubernetes minor",
+      "dependencyDashboardApproval": true,
+      "prBodyNotes": ["Upgrade one minor at a time. After merging, rerun `host/01-microk8s.sh` on the server (it refreshes the snap to the new channel), then `kubectl apply -k k8s/`."]
+    }
+  ]
+}

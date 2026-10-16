@@ -193,6 +193,12 @@ service must authenticate on its own.
     stayed as it was.
   - Annotations reached Zotero's server only after desktop synced. A
     comment added later needed another sync first.
+- **Renovate** (2026-10-16): `renovate.json` committed (see "Dependency
+  updates"). Waiting for the owner to install the GitHub App.
+  - A local dry run found every pin. First updates it proposed: Traefik
+    chart 39.0.9 (and 42.0.0 as a major), Python 3.15 for paperbridge,
+    digests for the three tag-only images (webdav, lego, kubectl), Actions
+    pinned to SHAs. Meilisearch v1.55 and kubectl 1.37 wait for approval.
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
@@ -242,7 +248,8 @@ service must authenticate on its own.
   - Every exposed service requires its own login with a strong password
     or key. Nothing is anonymous "because it's only the LAN".
 - **Pinned images, newest releases.** No `:latest`. Bump deliberately and
-  note why in the commit.
+  note why in the commit. Renovate proposes the bumps as PRs (see
+  "Dependency updates"); nothing updates by itself.
 - **Git:** the owner allows committing and pushing freely. Scan the staged
   diff for credentials, IPs and personal email before every push.
 
@@ -420,6 +427,59 @@ the router VPN when away.
 
 **Karakeep.** Its own login. Set `DISABLE_SIGNUPS=true` once the owner's
 account exists. `NEXTAUTH_SECRET` and `MEILI_MASTER_KEY` come from `.env`.
+
+### Dependency updates: Renovate
+
+Everything is pinned, so nothing updates by itself. Mend's hosted
+**Renovate** GitHub App (installed by the owner on this repo only) reads
+`renovate.json` and opens PRs. No automerge: every PR is merged, and then
+deployed, by hand.
+
+- **Calm by design.** PRs are only opened on Mondays (Europe/Stockholm),
+  grouped by what has to happen after merging. Majors come as a separate
+  PR per group (Renovate's default). The "Dependency Dashboard" issue lists
+  everything, including updates waiting for the schedule or for approval.
+- `config:best-practices`: Docker images get tag **and** digest (it pins
+  digests that are missing), and GitHub Actions are pinned to commit SHAs
+  with the version in a comment.
+
+| Group | What | After merging |
+|---|---|---|
+| cluster images | every `image:` in `k8s/**/*.yaml` | `kubectl apply -k k8s/` |
+| paperbridge dependencies | `pyproject.toml` (dependencies, the `test` extra, hatchling) and the Dockerfile's base image | a paperbridge release: bump `version`, push the `vX.Y.Z` tag, pin the new digest in its CronJob, apply |
+| GitHub Actions | actions and `setup-python`'s `python-version` in `.github/workflows` | nothing |
+| host scripts | `TRAEFIK_CHART` in `host/01-microk8s.sh` | rerun that script with sudo |
+| translation-server upstream | `images/translation-server/UPSTREAM_REF`, following `zotero/translation-server` `master` (`git-refs`) | the workflow builds the image; then pin its tag and digest in the Deployment, apply |
+
+- **Only on request**, by ticking the box in the dashboard
+  (`dependencyDashboardApproval`):
+  - **Kubernetes minor:** the MicroK8s channel and `alpine/kubectl`
+    (lego's CronJob, pinned to the cluster's minor) move together.
+    `host/01-microk8s.sh` refreshes the snap when `CHANNEL` differs from
+    what it tracks; upgrade one minor at a time.
+  - **Meilisearch**, which stays on Karakeep's pinned version (see "Verify
+    before relying on").
+- **Not tracked:** `ghcr.io/mufflon/*` images. We set their tag and digest
+  when we release them.
+- How each pin is found:
+  - The `kubernetes` manager has no default file pattern;
+    `renovate.json` sets `k8s/**/*.yaml`.
+  - The `poetry` manager is off. It claims `pyproject.toml` but ignores
+    `build-system.requires`; `pep621` reads all of it.
+  - The MicroK8s channel uses the `github-releases` of
+    `canonical/microk8s`. A release (`v1.36`) is published when a minor
+    reaches stable.
+  - The Traefik chart comes from `https://traefik.github.io/charts`. The
+    MicroK8s addon pins its own version; ours overrides it through `-V`.
+  - `karakeep-chrome` tags look like `154.0.8037.57-r1`, plus `-amd64` and
+    `-arm64` variants. A `regex:` versioning keeps only the plain ones.
+- Our PRs run paperbridge's tests (the workflow also triggers on
+  `pull_request`). Nothing else has CI.
+- To check a config change locally:
+  `npx --package renovate renovate-config-validator --strict`. A dry run,
+  `renovate --platform=local --dry-run=lookup`, only sees committed files
+  (it lists them with git), so run it in a scratch clone with the change
+  committed. Renovate 44 wants Node 24; Node 25 works but logs an error.
 
 ### paperbridge: Karakeep → Zotero → Karakeep
 
@@ -684,6 +744,7 @@ Each step is done when it's deployed **and** verified from a LAN device
 ```
 CLAUDE.md
 README.md                 # prerequisites + rebuild procedure
+renovate.json             # weekly dependency-update PRs (see "Dependency updates")
 .env.example              # secret names only
 .gitignore                # .env, kubeconfig*, *.secret.yaml
 host/

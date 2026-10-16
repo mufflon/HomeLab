@@ -13,7 +13,12 @@ step() { printf '\n==== %s ====\n' "$*"; }
 [[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 1; }
 
 step "MicroK8s $CHANNEL"
-snap list microk8s >/dev/null 2>&1 || snap install microk8s --classic --channel="$CHANNEL"
+# A changed CHANNEL (e.g. a Renovate PR) upgrades the cluster: one minor at a time.
+if ! snap list microk8s >/dev/null 2>&1; then
+  snap install microk8s --classic --channel="$CHANNEL"
+elif [[ $(snap info microk8s | awk '/^tracking:/{print $2}') != "$CHANNEL" ]]; then
+  snap refresh microk8s --channel="$CHANNEL"
+fi
 usermod -aG microk8s "$OWNER"
 microk8s status --wait-ready --timeout 300 >/dev/null
 echo "running: $(snap list microk8s | awk 'NR==2{print $2, $4}')"

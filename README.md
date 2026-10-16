@@ -195,6 +195,14 @@ creates a minimal item tagged `needs-metadata` to fix by hand.
     it, instead of making a duplicate.
   - An emptied collection goes to Zotero's trash rather than being
     deleted, so nothing is lost by accident.
+- **Exact versions, updated by pull request.** Every image, package and
+  tool is pinned to an exact version (images also to a digest), so the
+  server never changes underneath you. To keep them current,
+  [Renovate](https://docs.renovatebot.com) opens pull requests once a week,
+  grouped by what has to happen after merging: re-apply the cluster, cut a
+  paperbridge release, or rerun a host script. Nothing merges by itself.
+  Kubernetes upgrades, and Meilisearch, which has to match Karakeep, are
+  only proposed when asked for, from Renovate's dashboard issue.
 - **The repo is the rebuild recipe.** Host setup is idempotent scripts.
   Everything in the cluster is plain Kubernetes manifests, applied with a
   single `kubectl apply -k k8s/`. We add no Helm charts, operators or CRDs
@@ -213,6 +221,7 @@ creates a minimal item tagged `needs-metadata` to fix by hand.
 | `images/` | Third-party images we build ourselves, e.g. Zotero's translation-server, because the published one is ARM-only |
 | `services/paperbridge/` | The glue service: its Python source, tests and container build |
 | `.github/workflows/` | GitHub Actions that build those images and publish them to `ghcr.io/mufflon/*` |
+| `renovate.json` | What Renovate keeps up to date, how it groups the pull requests, and when |
 | `.env.example` | Every secret the setup needs, by name only |
 
 ## Prerequisites (outside this repo)
@@ -243,6 +252,9 @@ creates a minimal item tagged `needs-metadata` to fix by hand.
    - Optionally, an email address for Unpaywall's open-access lookup. It
      needs no account; it just asks callers to identify themselves.
    - The Karakeep API key is created during the build (step 4).
+   - For update pull requests, the
+     [Renovate GitHub App](https://github.com/apps/renovate), installed on
+     this repository only. It isn't needed to rebuild.
 6. **Your machine** (the workstation you manage the cluster from, not the
    server)
    - A clone of this repo, with `.env` filled in from `.env.example`.
@@ -269,7 +281,8 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
    - sanoid snapshots for `zotero-webdav`, `karakeep`, `certs` and
      `paperbridge`.
 2. **`host/01-microk8s.sh`** sets up the cluster:
-   - MicroK8s `1.36/stable`;
+   - MicroK8s `1.36/stable` (rerun after the channel in the script was
+     bumped, it upgrades the cluster to it);
    - the Traefik ingress addon, using the wildcard certificate as the
      default;
    - the Traefik dashboard route switched off, and HTTP redirected to

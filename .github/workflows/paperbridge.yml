@@ -1,6 +1,6 @@
-# paperbridge: run its tests on every push that touches it. On a vX.Y.Z tag, also build it for
-# linux/amd64 and publish ghcr.io/mufflon/paperbridge:X.Y.Z. The version lives only in
-# services/paperbridge/pyproject.toml; the tag must match it.
+# paperbridge: run its tests on every push and pull request (e.g. Renovate's) that touches it. On a
+# vX.Y.Z tag, also build it for linux/amd64 and publish ghcr.io/mufflon/paperbridge:X.Y.Z. The
+# version lives only in services/paperbridge/pyproject.toml; the tag must match it.
 name: paperbridge
 
 on:
@@ -10,6 +10,10 @@ on:
       - services/paperbridge/**
       - .github/workflows/paperbridge.yml
     tags: ['v*']                 # path filters don't apply to tags
+  pull_request:
+    paths:
+      - services/paperbridge/**
+      - .github/workflows/paperbridge.yml
 
 permissions:
   contents: read
