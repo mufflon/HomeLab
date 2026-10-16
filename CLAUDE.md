@@ -173,10 +173,26 @@ service must authenticate on its own.
     paper Read in Zotero archived both linked bookmarks on the next run and
     tagged them `read-2026-10`. The paper is left marked Read: it was a real
     read.
-- **paperbridge v2 (0.4.0): deployed** 2026-10-16, highlights Zotero →
-  Karakeep (paperbridge, "Sync", Annotations). With no annotations in the
-  library yet, runs change nothing. The live test, with the owner's
-  throwaway highlights on the test paper, is still to do.
+- **paperbridge v2 (0.4.0): done**, verified live on 2026-10-16:
+  highlights Zotero → Karakeep (paperbridge, "Sync", Annotations).
+  - Test: the owner made throwaway annotations on the test paper's PDF
+    in Zotero desktop: three highlights, and an area (image) annotation
+    with a comment.
+    - Within one run they were in both bookmarks' notes, in reading
+      order, between the (empty) comments and the Zotero links. The area
+      annotation showed as `- p. 8, image: <comment>`.
+    - The next runs changed nothing.
+    - A Karakeep search for a highlighted phrase found the arXiv abstract
+      page's bookmark, which only has it in its note.
+    - No "From Karakeep" note appeared in Zotero, so the highlights stay
+      out of the two-way comments.
+  - Cleanup: the owner deleted the annotations in Zotero desktop. The
+    next run removed the section from both notes; the run after changed
+    nothing.
+  - The owner's real read state on that paper (archived, `read-2026-10`)
+    stayed as it was.
+  - Annotations reached Zotero's server only after desktop synced. A
+    comment added later needed another sync first.
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
