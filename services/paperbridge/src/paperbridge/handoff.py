@@ -5,7 +5,8 @@ Idempotent, with no state of its own:
 - a "Karakeep: <bookmark link>" line in the Zotero item's Extra finds the item again if a run
   stopped between creating it and tagging the bookmark;
 - a DOI already in the library is linked instead of duplicated.
-Both lookups read the library's top-level items, once per run that has work to do.
+Both lookups read the library's top-level items, once per run. mirror.py then files the
+items into collections that mirror the chosen Karakeep lists.
 """
 
 import logging
@@ -19,6 +20,7 @@ import httpx
 from .clients import Karakeep, TranslationServer, WebDAV, Zotero
 from .config import Config
 from .files import PDF, attachment_filename, find_pdf, md5, prop_for_webdav, zip_for_webdav
+from .mirror import Mirror
 from .metadata import (
     Identifiers,
     arxiv_submission_date,
@@ -80,9 +82,11 @@ class Handoff:
         self.now = now
         self.web_library = ""  # https://www.zotero.org/<user>/items, once the API key is checked
         self.library: list[dict] | None = None  # Zotero's top-level items, read once per run
+        self.bookmark_prefix = f"{cfg.karakeep_public_url}/dashboard/preview/"
 
     def run(self, only: str | None = None) -> int:
-        """Hand off every pending bookmark. Returns how many failed; the next run retries them."""
+        """Hand off every pending bookmark, then mirror the chosen Karakeep lists into Zotero's
+        collections (not with `only`). Returns how many things failed; the next run retries them."""
         tag_id = self.karakeep.tag_id(self.cfg.paper_tag)
         tagged = list(self.karakeep.bookmarks_tagged(tag_id)) if tag_id else []
         pending = [
@@ -94,16 +98,29 @@ class Handoff:
             "%d bookmark(s) tagged %r, %d without %r",
             len(tagged), self.cfg.paper_tag, len(pending), self.cfg.done_tag,
         )
-        if not pending:
-            return 0
-        self._check_zotero_key()
         failed = 0
+        if pending:
+            self._check_zotero_key()
         for bookmark in pending:
             try:
                 self.hand_off(bookmark)
             except Exception:
                 failed += 1
                 log.exception("bookmark %s failed; the next run retries it", bookmark["id"])
+        if only is None and self.cfg.mirror_lists:
+            mirror = Mirror(
+                self.karakeep,
+                self.zotero,
+                roots=self.cfg.mirror_lists,
+                bookmark_prefix=self.bookmark_prefix,
+                write=self._write,
+                new_key=new_key,
+            )
+            try:
+                failed += mirror.run(self._library())
+            except Exception:
+                failed += 1
+                log.exception("mirroring Karakeep's lists failed; the next run retries it")
         return failed
 
     def _check_zotero_key(self) -> None:
@@ -123,7 +140,7 @@ class Handoff:
         if content.get("type") in ("asset", "text"):
             bookmark = self.karakeep.bookmark(bid, include_content=True)
         url, text = source_url(bookmark), source_text(bookmark)
-        marker = f"Karakeep: {self.cfg.karakeep_public_url}/dashboard/preview/{bid}"
+        marker = f"Karakeep: {self.bookmark_prefix}{bid}"
         log.info("bookmark %s: %s", bid, url or bookmark.get("title") or content.get("fileName"))
 
         new: list[dict] = []  # Zotero objects to create, in one request
@@ -143,7 +160,7 @@ class Handoff:
                 version = self._write(
                     f"add {marker!r} to the Extra of {parent['key']}",
                     self.zotero.update,
-                    parent["key"],
+                    f"/items/{parent['key']}",
                     parent["version"],
                     {"extra": extra},
                 )
@@ -178,11 +195,14 @@ class Handoff:
                 self.library.append(created[0] if created else parent)
         self._mark_done(bookmark, parent["key"])
 
-    def _find(self, match: Callable[[dict], bool]) -> dict | None:
+    def _library(self) -> list[dict]:
         if self.library is None:
             self.library = self.zotero.top_items()
             log.info("Zotero library: %d top-level items", len(self.library))
-        return next((i for i in self.library if match(i)), None)
+        return self.library
+
+    def _find(self, match: Callable[[dict], bool]) -> dict | None:
+        return next((i for i in self._library() if match(i)), None)
 
     def _metadata(self, bookmark: dict, url: str | None, text: str | None):
         found = lookup(self.ts, url, text)

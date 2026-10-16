@@ -2,6 +2,7 @@
 
 import io
 import zipfile
+from dataclasses import replace
 from datetime import datetime
 
 import httpx
@@ -56,12 +57,19 @@ class FakeKarakeep:
         self.writes.append(("tag", bid, name))
         self.bookmarks[bid]["tags"].append({"id": "tag-" + name, "name": name})
 
+    def lists(self):
+        return [{"id": "L1", "name": "Papers", "parentId": None, "type": "manual"}]
+
+    def list_bookmark_ids(self, lid):
+        return ["bm1"]
+
 
 class FakeZotero:
     def __init__(self):
         self.items = {}
         self.writes = []
         self.scans = 0
+        self.collections_ = {}
 
     def key_info(self):
         return {"userID": 1, "username": "owner", "access": {"user": {"library": True, "write": True}}}
@@ -73,7 +81,14 @@ class FakeZotero:
     def children(self, key):
         return [dict(i) for i in self.items.values() if i.get("parentItem") == key]
 
-    def create(self, objects):
+    def collections(self):
+        return [dict(c) for c in self.collections_.values()]
+
+    def create(self, objects, kind="items"):
+        if kind == "collections":
+            self.writes.append(("create", ["collection"] * len(objects)))
+            self.collections_.update({o["key"]: {**o, "version": 1} for o in objects})
+            return
         self.writes.append(("create", [o["itemType"] for o in objects]))
         stored = []
         for o in objects:
@@ -84,7 +99,8 @@ class FakeZotero:
             stored.append(dict(self.items[key]))
         return stored
 
-    def update(self, key, version, fields):
+    def update(self, path, version, fields):
+        key = path.removeprefix("/items/")
         assert version == self.items[key]["version"], "stale version"
         self.writes.append(("update", key))
         self.items[key].update(fields, version=version + 1)
@@ -255,6 +271,18 @@ def test_still_crawling_waits(world):
     karakeep.bookmarks["bm1"]["content"]["crawlStatus"] = "pending"
     handoff.run()
     assert zotero.items == {}
+
+
+def test_a_new_paper_is_filed_in_the_same_run(world):
+    handoff, karakeep, zotero, dav = world
+    handoff.cfg = replace(CFG, mirror_lists=("Papers",))
+    assert handoff.run() == 0
+    [parent] = [i for i in zotero.items.values() if i["itemType"] == "preprint"]
+    [papers] = zotero.collections_
+    assert parent["collections"] == [papers]
+    zotero.writes.clear()
+    handoff.library = None  # a new run reads the library again
+    assert handoff.run() == 0 and zotero.writes == []
 
 
 def test_dry_run_writes_nothing(world):

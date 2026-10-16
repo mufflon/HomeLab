@@ -35,6 +35,9 @@ class Config:
     # How long to keep retrying a bookmark whose metadata can't be found yet (the page may still be
     # crawling, or a site may be down) before creating a minimal item tagged needs-metadata.
     metadata_grace_hours: float = 24.0
+    # Top-level Karakeep lists to mirror as Zotero collections, with their sublists (MIRROR_LISTS,
+    # comma-separated). Empty: no mirroring.
+    mirror_lists: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls, env=os.environ) -> "Config":
@@ -56,4 +59,5 @@ class Config:
             paper_tag=env.get("PAPER_TAG") or cls.paper_tag,
             done_tag=env.get("DONE_TAG") or cls.done_tag,
             metadata_grace_hours=float(env.get("METADATA_GRACE_HOURS") or cls.metadata_grace_hours),
+            mirror_lists=tuple(n.strip() for n in (env.get("MIRROR_LISTS") or "").split(",") if n.strip()),
         )

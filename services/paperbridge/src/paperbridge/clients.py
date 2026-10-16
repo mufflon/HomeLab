@@ -86,6 +86,13 @@ class Karakeep(API):
     def add_tag(self, bookmark_id: str, name: str) -> None:
         self.request("POST", f"/bookmarks/{bookmark_id}/tags", json={"tags": [{"tagName": name}]})
 
+    def lists(self) -> list[dict]:
+        """All lists, manual and smart, owned by or shared with the user (not paginated)."""
+        return self.request("GET", "/lists").json()["lists"]
+
+    def list_bookmark_ids(self, list_id: str) -> list[str]:
+        return [b["id"] for b in self._pages(f"/lists/{list_id}/bookmarks", "bookmarks")]
+
     def _pages(self, path: str, key: str, **params) -> Iterator[dict]:
         cursor = None
         while True:
@@ -113,44 +120,60 @@ class Zotero(API):
         return self.request("GET", f"{self.api_url}/keys/current").json()
 
     def top_items(self) -> list[dict]:
-        """Every top-level item outside the trash, 100 per request.
+        """Every top-level item outside the trash.
 
         Quick search (q=) can't stand in: even qmode=everything matches only title, creators,
         year, notes and full text, not the DOI or Extra fields.
         """
-        items: list[dict] = []
-        while True:
-            response = self.request("GET", "/items/top", params={"limit": 100, "start": len(items)})
-            page = [i["data"] for i in response.json()]
-            items += page
-            if not page or len(items) >= int(response.headers.get("Total-Results", 0)):
-                return items
+        return self._all("/items/top")
+
+    def collections(self) -> list[dict]:
+        """Every collection, including those in the trash (flagged `deleted`)."""
+        return self._all("/collections")
 
     def children(self, key: str) -> list[dict]:
         return [i["data"] for i in self.request("GET", f"/items/{key}/children").json()]
 
-    def create(self, objects: list[dict]) -> list[dict]:
-        """POST new items in one request; every one must succeed. Returns them as stored."""
+    def collection_is_empty(self, key: str) -> bool:
+        """No items in it, not even trashed ones, and no subcollections."""
+        items = self.request(
+            "GET", f"/collections/{key}/items", params={"limit": 1, "includeTrashed": 1}
+        ).json()
+        subcollections = self.request("GET", f"/collections/{key}/collections", params={"limit": 1}).json()
+        return not items and not subcollections
+
+    def create(self, objects: list[dict], kind: str = "items") -> list[dict]:
+        """POST new items (or collections) in one request; every one must succeed. Returns them
+        as stored."""
         result = self.request(
             "POST",
-            "/items",
+            f"/{kind}",
             json=objects,
             headers={"Zotero-Write-Token": secrets.token_hex(16)},
         ).json()
         if result.get("failed"):
-            raise RuntimeError(f"Zotero rejected items: {result['failed']}")
+            raise RuntimeError(f"Zotero rejected {kind}: {result['failed']}")
         return [result["successful"][str(i)]["data"] for i in range(len(objects))]
 
-    def update(self, key: str, version: int, fields: dict) -> int:
-        """PATCH some fields of an item, only if nobody changed it since `version`. Returns the
-        item's new version."""
+    def update(self, path: str, version: int, fields: dict) -> int:
+        """PATCH some fields of an item or collection (path: /items/KEY, /collections/KEY), only
+        if nobody changed it since `version`. Returns its new version."""
         response = self.request(
             "PATCH",
-            f"/items/{key}",
+            path,
             json=fields,
             headers={"If-Unmodified-Since-Version": str(version)},
         )
         return int(response.headers["Last-Modified-Version"])
+
+    def _all(self, path: str) -> list[dict]:
+        objects: list[dict] = []
+        while True:
+            response = self.request("GET", path, params={"limit": 100, "start": len(objects)})
+            page = [o["data"] for o in response.json()]
+            objects += page
+            if not page or len(objects) >= int(response.headers.get("Total-Results", 0)):
+                return objects
 
 
 class WebDAV(API):
