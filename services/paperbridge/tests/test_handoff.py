@@ -79,6 +79,8 @@ class FakeZotero:
     def create(self, objects):
         self.writes.append(("create", [o["itemType"] for o in objects]))
         for n, o in enumerate(objects):
+            # Like Zotero: a client-chosen key needs version 0 (or If-Unmodified-Since-Version).
+            assert "key" not in o or o.get("version") == 0, f"key without version: {o}"
             key = o.get("key") or f"SRV{len(self.items) + n:05d}"  # the server assigns missing keys
             self.items[key] = {**o, "key": key, "version": 1}
 

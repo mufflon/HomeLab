@@ -145,7 +145,13 @@ class Handoff:
                     {"extra": append_line(parent.get("extra"), marker)},
                 )
             else:
-                parent = {**item, "key": new_key(), "extra": append_line(item.get("extra"), marker)}
+                # version 0: "new" to Zotero's API, which requires it with a client-chosen key.
+                parent = {
+                    **item,
+                    "key": new_key(),
+                    "version": 0,
+                    "extra": append_line(item.get("extra"), marker),
+                }
                 new = [parent] + [{**note, "parentItem": parent["key"]} for note in notes]
                 log.info("new %s %r as %s", parent["itemType"], parent.get("title"), parent["key"])
 
@@ -208,6 +214,7 @@ class Handoff:
         self._write(f"PUT {key}.prop", self.webdav.put, f"{key}.prop", prop, "text/xml")
         return {
             "key": key,
+            "version": 0,
             "itemType": "attachment",
             "parentItem": parent["key"],
             "linkMode": "imported_file",
