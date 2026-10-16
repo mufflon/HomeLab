@@ -194,9 +194,16 @@ service must authenticate on its own.
   - Annotations reached Zotero's server only after desktop synced. A
     comment added later needed another sync first.
 - **Renovate** (2026-10-16): `renovate.json` committed (see "Dependency
-  updates"). The owner installed the GitHub App, but two hours later there
-  was still no dashboard issue and no PR. Next: check HomeLab on
-  developer.mend.io (listed? interactive rather than silent? job log).
+  updates").
+  - The first install attempt hadn't taken. developer.mend.io said no
+    account of the owner's had the app.
+  - The owner installed it on `mufflon`, HomeLab only, choosing "Scan and
+    Alert". That is Mend's interactive mode; "Scan only" (silent) creates
+    nothing in the repo.
+  - Within a minute the Dependency Dashboard issue (#1) appeared, matching
+    the local dry run.
+  - Then: lock-file maintenance off (there are no lock files), and the
+    CI's Python moved into the paperbridge group.
   - A local dry run found every pin. First updates it proposed: Traefik
     chart 39.0.9 (and 42.0.0 as a major), Python 3.15 for paperbridge,
     digests for the three tag-only images (webdav, lego, kubectl), Actions
@@ -559,8 +566,8 @@ deployed, by hand.
 | Group | What | After merging |
 |---|---|---|
 | cluster images | every `image:` in `k8s/**/*.yaml` | `kubectl apply -k k8s/` |
-| paperbridge dependencies | `pyproject.toml` (dependencies, the `test` extra, hatchling) and the Dockerfile's base image | a paperbridge release: bump `version`, push the `vX.Y.Z` tag, pin the new digest in its CronJob, apply |
-| GitHub Actions | actions and `setup-python`'s `python-version` in `.github/workflows` | nothing |
+| paperbridge dependencies | `pyproject.toml` (dependencies, the `test` extra, hatchling), the Dockerfile's base image, and the CI's `setup-python` version (so the PR is tested on the new Python) | a paperbridge release: bump `version`, push the `vX.Y.Z` tag, pin the new digest in its CronJob, apply |
+| GitHub Actions | the actions in `.github/workflows` | nothing |
 | host scripts | `TRAEFIK_CHART` in `host/01-microk8s.sh` | rerun that script with sudo |
 | translation-server upstream | `images/translation-server/UPSTREAM_REF`, following `zotero/translation-server` `master` (`git-refs`) | the workflow builds the image; then pin its tag and digest in the Deployment, apply |
 

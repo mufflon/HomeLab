@@ -14,6 +14,10 @@
     "description": "paperbridge builds with hatchling; off, so the pep621 manager also tracks build-system.requires.",
     "enabled": false
   },
+  "lockFileMaintenance": {
+    "description": "Nothing here has a lock file; config:best-practices would list an empty weekly task.",
+    "enabled": false
+  },
   "customManagers": [
     {
       "customType": "regex",
@@ -63,6 +67,12 @@
       "description": "GitHub Actions: one PR, pinned to commit digests (config:best-practices).",
       "matchManagers": ["github-actions"],
       "groupName": "GitHub Actions"
+    },
+    {
+      "description": "The CI's Python (setup-python) moves with paperbridge's base image, so the PR's tests run on the new Python.",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["python"],
+      "groupName": "paperbridge dependencies"
     },
     {
       "description": "Host scripts: take effect only when the owner reruns them on the server with sudo.",
