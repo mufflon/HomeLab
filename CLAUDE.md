@@ -360,23 +360,44 @@ Facts that matter when working here, verified 2026-10-15.
 
 ### Access: LAN ingress with a wildcard certificate
 
-- **Ingress.** The MicroK8s `ingress` addon is **Traefik** (chart 39.0.9,
-  Traefik v3.6.15), not ingress-nginx, which upstream retired in 2026. It runs
-  as a DaemonSet on host ports 80/443. `host/01-microk8s.sh` enables it
-  with `--default-ssl-certificate ingress/wildcard-home-tls`, which creates
-  Traefik's default `TLSStore`. The script then hardens it through a Helm
-  upgrade:
-  - The addon's values create an **unauthenticated dashboard** route on
-    `Host(dashboard.localhost)`. The script disables it.
-  - The script adds a **web → websecure** redirect:
-    `ports.web.http.redirections.entryPoint.*`. In chart 39 the redirect
-    sits under `http`. The older `ports.web.redirections` fails schema
+- **Ingress.** Traefik, installed through the MicroK8s `ingress` addon
+  (chart 42.0.0, Traefik v3.7.14; ingress-nginx was retired upstream in
+  2026). It runs as a DaemonSet on host ports 80/443. `host/01-microk8s.sh`
+  does it in two steps:
+  1. **The addon** (`microk8s enable ingress --default-ssl-certificate
+     ingress/wildcard-home-tls`) installs its own chart version (39.0.8 in
+     MicroK8s 1.36) with its own values, and creates Traefik's default
+     `TLSStore` outside Helm. On a cluster that already has the addon, it
+     changes nothing.
+  2. **Our chart and values.** The script pulls `TRAEFIK_CHART` and applies
+     its `traefik.io` CRDs (Helm never upgrades CRDs; no Hub CRDs, and the
+     addon brings the Gateway API CRDs, bundle v1.5.1). Then it runs
+     `helm upgrade --reset-values` with the full configuration written into
+     the script.
+     - That configuration is the addon's, under chart 42's key names, plus
+       our changes, marked "ours".
+     - `--reset-values`, not `--reuse-values`: chart 40 renamed
+       `providers.kubernetesIngressNginx` to `kubernetesIngressNGINX`, and
+       its schema rejects the old key. The addon's values carry it, and
+       `--set key=null` can't remove a key the chart doesn't define.
+  - Ours: **no dashboard.** The addon's values create an unauthenticated
+    dashboard route on `Host(dashboard.localhost)`. `api.dashboard` and
+    `ingressRoute.dashboard.enabled` are off.
+  - Ours: a **web → websecure** redirect,
+    `ports.web.http.redirections.entryPoint.*`. Since chart 39 it sits
+    under `http`; the older `ports.web.redirections` fails schema
     validation.
-  - The script switches off `api.dashboard`.
-  - The script makes rollouts update in place (`maxSurge 0`,
-    `maxUnavailable 1`). The chart's default surge rollout deadlocks on a
-    single node, because the new pod needs host ports 80/443 that the old
-    pod still holds. Ingress therefore blips for a few seconds per update.
+  - Ours: rollouts **update in place** (`maxSurge 0`, `maxUnavailable 1`).
+    The chart's default surge rollout deadlocks on a single node, because
+    the new pod needs host ports 80/443 that the old pod still holds.
+    Ingress therefore blips per update: seconds, or as long as pulling a
+    new image takes.
+  - The addon's IngressClasses (`public` as the default, `nginx`) and its
+    providers (Ingress, Gateway API, the ingress-nginx compatibility one)
+    are kept as they were. Only `public` is used.
+  - When a MicroK8s minor changes the addon's values, compare them with
+    the script's (`microk8s helm get values traefik -n ingress` right
+    after a fresh `enable`).
 - **Writing Ingresses.** Use `ingressClassName: public` (the addon's
   default class). Put a `tls: [{hosts: [<name>.home.threadsafe.se]}]`
   entry **without** `secretName`, so Traefik serves the default wildcard
@@ -621,7 +642,8 @@ deployed, by hand.
     `canonical/microk8s`. A release (`v1.36`) is published when a minor
     reaches stable.
   - The Traefik chart comes from `https://traefik.github.io/charts`. The
-    MicroK8s addon pins its own version; ours overrides it through `-V`.
+    MicroK8s addon installs its own version first; the script's `helm upgrade`
+    replaces it (see "Ingress").
   - `karakeep-chrome` tags look like `154.0.8037.57-r1`, plus `-amd64` and
     `-arm64` variants. A `regex:` versioning keeps only the plain ones.
 - Our PRs run paperbridge's tests (the workflow also triggers on

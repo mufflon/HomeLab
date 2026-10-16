@@ -310,8 +310,9 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
      bumped, it upgrades the cluster to it);
    - the Traefik ingress addon, using the wildcard certificate as the
      default;
-   - the Traefik dashboard route switched off, and HTTP redirected to
-     HTTPS.
+   - then the Traefik chart version pinned in the script, with its full
+     configuration written out there: the dashboard switched off, and HTTP
+     redirected to HTTPS.
 3. **Kubeconfig:** `ssh minisforum microk8s config > ~/.kube/homelab`.
    Point `KUBECONFIG` at it. Never commit it.
 4. **Secrets:** `scripts/secrets.sh` creates every Kubernetes Secret from
