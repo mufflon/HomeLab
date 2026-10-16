@@ -76,10 +76,39 @@ service must authenticate on its own.
     `/api/health` reports ok.
   - The owner's account exists, and then `DISABLE_SIGNUPS=true` was
     applied. Verified: the sign-in page serves `"disableSignups":true`.
-- **Next: step 5, paperbridge v0 (handoff).** It needs these in `.env`:
-  - `KARAKEEP_API_KEY` (Karakeep → Settings → API Keys);
-  - `ZOTERO_USER_ID` and `ZOTERO_API_KEY` (zotero.org → Settings →
-    Security, with library read/write access).
+- **Step 5, paperbridge v0: code done, not deployed** (2026-10-16).
+  - Done and pushed in `d2e626b`: `services/paperbridge/` (Python 3.14,
+    httpx), 19 unit tests against in-memory fakes, and
+    `.github/workflows/paperbridge.yml` (tests on every push, the image
+    only on `v*` tags). CI tests are green. The image builds and runs
+    locally as UID 10004 with a read-only root filesystem.
+  - `scripts/secrets.sh` makes the `paperbridge` Secret. A source key
+    ending in `?` is optional (`UNPAYWALL_EMAIL`). The WebDAV login comes
+    from the existing `zotero-webdav` Secret.
+  - `k8s/research/paperbridge/` (CronJob every 15 minutes, settings in
+    `paperbridge.env`) is in the repo but **not yet listed in
+    `k8s/research/kustomization.yaml`**. Its image digest is a placeholder
+    until v0.1.0 is published.
+  - Left, in order:
+    1. Owner: fill `KARAKEEP_API_KEY` (Karakeep → Settings → API Keys),
+       `ZOTERO_USER_ID` and `ZOTERO_API_KEY` (zotero.org → Settings →
+       Security; a private key with library access and write access) in
+       `.env`, optionally `UNPAYWALL_EMAIL`. Then run `scripts/secrets.sh`.
+    2. Live test from the workstation: a dry run, then one arXiv bookmark.
+       Check the two open Zotero API questions under "Verify before
+       relying on".
+    3. Tag `v0.1.0`. Pin the published digest in `cronjob.yaml`. Add
+       `paperbridge` to `k8s/research/kustomization.yaml`, then apply.
+    4. Owner: the PDF opens in Zotero desktop, and a second run changes
+       nothing.
+  - Found in Karakeep v0.33.2:
+    - Bookmarking a PDF URL turns the bookmark into an `asset` bookmark
+      (`assetType: pdf`, `sourceUrl`, the extracted text in `content`).
+    - A link bookmark's `pdfAssetId` is Karakeep's print of the web page,
+      not the paper. paperbridge ignores it.
+  - Found in translation-server: it returns no attachments (no PDF URLs).
+    PDFs therefore come from Karakeep's asset, then `arxiv.org/pdf/<id>`,
+    then Unpaywall.
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
@@ -291,7 +320,7 @@ are in `ingress`.
 | karakeep | `ghcr.io/karakeep-app/karakeep` | `karakeep.home.threadsafe.se` | `karakeep` |
 | meilisearch | `getmeili/meilisearch:v1.41.0`, the version Karakeep's own manifests pin (newest upstream is v1.55) | ClusterIP only | `meilisearch` |
 | chrome | `ghcr.io/karakeep-app/karakeep-chrome` (runs as 65534) | ClusterIP only | none |
-| paperbridge | built from `services/paperbridge`, published to ghcr.io | CronJob, no ingress | small state |
+| paperbridge | `ghcr.io/mufflon/paperbridge`, built from `services/paperbridge` on `v*` tags, pinned by digest; runs as 10004 | CronJob, no ingress | none: v0's state is Karakeep tags and Zotero's `Extra` |
 
 **Zotero WebDAV.** One user, basic auth, password read from the Secret
 through `{env}`. It is plain rather than bcrypt because the server checks
@@ -340,6 +369,10 @@ version for incremental sync.
 
 Papers get the `paper` tag manually, or from a Karakeep rule matching
 doi.org / arxiv.org URLs.
+- Karakeep's rule engine can do this. v0.33.2's source has `urlContains`
+  conditions and `or` groups.
+- Rules are set in the UI and stored in Karakeep's database, not in this
+  repo.
 
 **Sync back.**
 
@@ -359,6 +392,35 @@ doi.org / arxiv.org URLs.
   Karakeep's MCP server. The Zotero MCP server in web-API mode cannot reach
   WebDAV files.
 - **Later, same service:** EPUB/OPDS.
+
+**v0 as built** (`services/paperbridge/`):
+
+- The `Extra` line is `Karakeep: https://karakeep.home.threadsafe.se/dashboard/preview/<bookmarkId>`.
+  That is the bookmark's own link, not the page URL; the item's URL field
+  already holds the page URL. A rerun finds the item by quick-searching for
+  the bookmark ID, so a crash between creating the item and tagging the
+  bookmark doesn't make a duplicate.
+- Metadata order:
+  1. An arXiv ID in the URL → `/search arXiv:<id>`.
+  2. A doi.org link → `/search <doi>`.
+  3. Otherwise `/web <url>`, then a DOI found in the URL.
+  4. A bookmarked PDF: the arXiv ID or DOI in its text, accepted only if
+     the found title also appears in that text.
+- arXiv preprints get their **v1 date** from arXiv's API, which fixes the
+  step 3 gotcha.
+- No metadata: retry each run until the bookmark is
+  `METADATA_GRACE_HOURS` (24) old, then create a minimal item tagged
+  `needs-metadata`.
+- Link bookmarks Karakeep is still crawling wait, because a PDF link
+  becomes an asset bookmark once crawled.
+- PDF: paperbridge chooses the attachment key itself. It writes
+  `<KEY>.zip` and `<KEY>.prop` first, then creates the parent, its notes
+  and the attachment in one API call, with `md5` and `mtime` set. Zotero's
+  API allows that for WebDAV libraries.
+  - The file name follows Zotero's default:
+    `Author et al. - Year - Title.pdf`.
+- The bookmark's note gets `zotero://select/library/items/<KEY>` and the
+  web-library link. `in-zotero` is tagged last.
 
 ## Build order
 
@@ -459,14 +521,12 @@ it.
 
 - VPN clients resolve `*.home.threadsafe.se` to the LAN IP and reach it.
   The router itself was verified on 2026-10-16.
-- Karakeep rule engine: can a rule match on URL host (doi.org, arxiv.org)?
 - Whether desktop picks up a file paperbridge
   wrote directly. Test with a real library before automating.
-- Zotero web API dedup by DOI: does quick search with `qmode=everything`
-  match the DOI field, or do we need a local DOI index?
+- Zotero web API: does quick search with `qmode=everything` match the DOI
+  field **and** the `Extra` line? paperbridge v0 relies on both. If not,
+  build a local index instead.
 - Where the Reading List plugin stores status (`Extra`, a tag, or
   something else).
-- `hacdias/webdav` against Zotero (PROPFIND, missing-file 404s, `.prop`
-  handling).
 - Meilisearch: stay on Karakeep's pinned v1.41.0, or verify a newer server
   with Karakeep's client first.

@@ -1,0 +1,50 @@
+# Every 15 minutes: one pass over Karakeep, then exit. Idempotent; its state is Karakeep tags and
+# the Zotero item's Extra field. Run it now:
+#   kubectl -n research create job paperbridge-now --from=cronjob/paperbridge
+# Look first without changing anything: add `args: [--dry-run]` to a copy of the job.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: paperbridge
+spec:
+  schedule: "*/15 * * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0             # the next run retries anyway
+      activeDeadlineSeconds: 840
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsUser: 10004
+            runAsGroup: 10004
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: paperbridge
+              # Built by .github/workflows/paperbridge.yml from services/paperbridge on a v* tag.
+              # PENDING: v0.1.0 isn't published yet. Pin its digest here, then add paperbridge to
+              # k8s/research/kustomization.yaml (until then, `kubectl apply -k k8s/` skips this).
+              image: ghcr.io/mufflon/paperbridge:0.1.0@sha256:PENDING
+              envFrom:
+                - configMapRef:
+                    name: paperbridge
+                - secretRef:
+                    name: paperbridge     # KARAKEEP_API_KEY, ZOTERO_USER_ID, ZOTERO_API_KEY, [UNPAYWALL_EMAIL]
+                - secretRef:
+                    name: zotero-webdav   # WEBDAV_USERNAME, WEBDAV_PASSWORD
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {memory: 1Gi}     # PDFs are held in memory, up to 200 MB each
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]

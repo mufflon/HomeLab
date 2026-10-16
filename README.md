@@ -8,11 +8,11 @@ It's public because there's no reason for it not to be. You're welcome to
 read it or borrow from it. Nothing here is a product, though: it's tuned to
 one home network, one server and one person's reading habits.
 
-> **Status:** early. The host, the ingress and HTTPS on
-> `*.home.threadsafe.se` are up. The research apps themselves are designed
-> and not yet deployed. Things marked *(planned)* below don't exist in the
-> repo yet. The detailed, current state is in the "Status" section of
-> [CLAUDE.md](CLAUDE.md).
+> **Status:** Karakeep, Zotero's file storage and Zotero's
+> translation-server run. paperbridge's handoff of papers from Karakeep to
+> Zotero is written and tested, but not yet deployed. Things marked
+> *(planned)* below aren't running yet. The detailed, current state is in
+> the "Status" section of [CLAUDE.md](CLAUDE.md).
 
 ## What it's for
 
@@ -35,7 +35,8 @@ annoyances:
    - A bookmark tagged `paper` in Karakeep becomes a complete Zotero item,
      with metadata looked up automatically and the PDF placed in Zotero's
      storage.
-   - When a paper is marked read in Zotero, that flows back to Karakeep.
+   - When a paper is marked read in Zotero, that flows back to Karakeep
+     *(planned)*.
 
 A side benefit: everything lives at home, as plain files on our own disks.
 And because Karakeep keeps the full text, an AI assistant can read saved
@@ -65,6 +66,7 @@ flowchart LR
 
   subgraph internet["Outbound only"]
     zoteroorg["zotero.org<br/>(library metadata)"]
+    papers["arXiv, Unpaywall,<br/>publishers' sites"]
     le["Let's Encrypt"]
     loopia["Loopia DNS API"]
   end
@@ -79,6 +81,8 @@ flowchart LR
   bridge --> dav
   bridge --> ts
   bridge --> zoteroorg
+  bridge --> papers
+  ts --> papers
   zotero --> zoteroorg
   lego --> le
   lego --> loopia
@@ -89,7 +93,22 @@ flowchart LR
 
 Only Traefik is reachable from the LAN. Everything else is cluster-internal.
 The only things that leave the house are outbound calls: zotero.org for
-library sync, and Let's Encrypt plus Loopia's API for certificates.
+library sync, Let's Encrypt plus Loopia's API for certificates, and the
+web itself, for the pages being saved and for papers' metadata and
+open-access PDFs.
+
+### Day to day *(planned: once paperbridge is deployed)*
+
+1. Bookmark a paper in Karakeep: its arXiv or doi.org link, the
+   publisher's page, or the PDF itself. Tag it `paper`.
+2. Within 15 minutes paperbridge has made it a Zotero item, with full
+   metadata and, when one can be found, the PDF. The bookmark gets the tag
+   `in-zotero`, and its note links to the Zotero item.
+3. Zotero desktop or mobile shows the paper after its next sync.
+
+A paper that's already in Zotero (same DOI) is linked, not duplicated. If
+no translator recognises a page, paperbridge keeps trying for a day, then
+creates a minimal item tagged `needs-metadata` to fix by hand.
 
 ## Design choices, and why
 
@@ -126,6 +145,15 @@ library sync, and Let's Encrypt plus Loopia's API for certificates.
     left empty by one of them, which quietly broke the original cluster
     for months. ZFS's copy-on-write design doesn't produce half-written
     files like that.
+- **paperbridge keeps no state of its own.**
+  - The `in-zotero` tag on a bookmark means "done", and a line in the
+    Zotero item's Extra field points back at the bookmark. If a run stops
+    halfway, the next one finds what was already done and finishes it.
+  - Zotero's web API can't upload files to WebDAV storage. So paperbridge
+    writes the PDF into the WebDAV folder itself, in the same zip-plus-
+    checksum format Zotero desktop uses there, and only then creates the
+    attachment in the library. Zotero desktop downloads it like any synced
+    file.
 - **The repo is the rebuild recipe.** Host setup is idempotent scripts.
   Everything in the cluster is plain Kubernetes manifests, applied with a
   single `kubectl apply -k k8s/`. We add no Helm charts, operators or CRDs
@@ -139,10 +167,10 @@ library sync, and Let's Encrypt plus Loopia's API for certificates.
 | `README.md` | This file: purpose, design, how to rebuild |
 | `CLAUDE.md` | The detailed spec and working notes. [Claude Code](https://claude.com/claude-code), the AI coding assistant this was built with, reads it at the start of every session. It has the exact versions, UIDs, gotchas and open questions. Worth reading for the "how exactly" |
 | `host/` | Idempotent scripts run once on the server with sudo (storage, MicroK8s) |
-| `k8s/` | Kubernetes manifests, one directory per area: `storage/` (ZFS-backed volumes), `ingress/` (certificates). Apps *(planned)* |
+| `k8s/` | Kubernetes manifests, one directory per area: `storage/` (ZFS-backed volumes), `ingress/` (certificates), `research/` (the apps) |
 | `scripts/` | Helpers run from your machine: `secrets.sh` turns `.env` into Kubernetes Secrets |
 | `images/` | Third-party images we build ourselves, e.g. Zotero's translation-server, because the published one is ARM-only |
-| `services/paperbridge/` | The glue service's source and container build *(planned)* |
+| `services/paperbridge/` | The glue service: its Python source, tests and container build |
 | `.github/workflows/` | GitHub Actions that build those images and publish them to `ghcr.io/mufflon/*` |
 | `.env.example` | Every secret the setup needs, by name only |
 
@@ -171,6 +199,8 @@ library sync, and Let's Encrypt plus Loopia's API for certificates.
    - DNS rebind protection, if any, must allow `home.threadsafe.se`.
 5. **Accounts**
    - A Zotero account, and an API key with library read/write.
+   - Optionally, an email address for Unpaywall's open-access lookup. It
+     needs no account; it just asks callers to identify themselves.
    - The Karakeep API key is created during the build (step 4).
 6. **Your machine** (the workstation you manage the cluster from, not the
    server)
@@ -208,7 +238,9 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
    `.env`. Secrets whose values aren't filled in yet are skipped.
 5. **Everything else:** `kubectl apply -k k8s/`.
    - Storage (StorageClass + PVs) and the lego certificate CronJob.
-   - Later, all apps *(planned)*.
+   - The research apps: WebDAV, translation-server, Karakeep with
+     Meilisearch and headless Chrome, and later the paperbridge CronJob
+     *(planned)*.
    - No Helm charts and no CRDs of our own, so a single apply is enough.
 6. **First certificate:** run the CronJob once instead of waiting for its
    schedule:
@@ -233,6 +265,14 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
    - **Zotero desktop:** Settings → Account → File Syncing → WebDAV, URL
      `https://zotero-dav.home.threadsafe.se/`, user and password from
      `.env`, then "Verify Server".
+   - **paperbridge** *(planned)* needs the Karakeep key from above plus the Zotero
+     user ID and API key in `.env`, then `scripts/secrets.sh`. Until its
+     Secret exists, each run of its CronJob fails at start, which is
+     harmless.
+   - **Optional, auto-tagging papers:** in Karakeep → Settings → Rules,
+     add a rule "when a bookmark is added, if the URL contains `arxiv.org`
+     or `doi.org`, add the tag `paper`". Rules live in Karakeep's database,
+     so they survive a rebuild with the data and aren't in this repo.
 
 ## What this does not cover
 
