@@ -76,9 +76,10 @@ service must authenticate on its own.
     `/api/health` reports ok.
   - The owner's account exists, and then `DISABLE_SIGNUPS=true` was
     applied. Verified: the sign-in page serves `"disableSignups":true`.
-- **Step 5, paperbridge v0: deployed and verified end to end**
-  (2026-10-16). The owner's Zotero desktop check is still to do: the PDF
-  should download and open.
+- **Step 5, paperbridge v0: done**, verified end to end on 2026-10-16.
+  - The owner checked Zotero desktop: the item synced, and its
+    "Preprint PDF" downloaded from WebDAV and opens. So desktop picks up
+    files paperbridge writes directly.
   - The CronJob runs `ghcr.io/mufflon/paperbridge:0.1.2` every 15
     minutes. Its Secret comes from `.env`. In `scripts/secrets.sh`, a
     source key ending in `?` is optional (`UNPAYWALL_EMAIL`). The WebDAV
@@ -546,9 +547,6 @@ it.
 
 - VPN clients resolve `*.home.threadsafe.se` to the LAN IP and reach it.
   The router itself was verified on 2026-10-16.
-- Whether desktop picks up a file paperbridge wrote directly. It's
-  waiting on the owner's check of the step 5 test item. The API side is
-  verified: the item has `md5`/`mtime`, and the `.zip`/`.prop` match.
 - Where the Reading List plugin stores status (`Extra`, a tag, or
   something else).
 - Meilisearch: stay on Karakeep's pinned v1.41.0, or verify a newer server
