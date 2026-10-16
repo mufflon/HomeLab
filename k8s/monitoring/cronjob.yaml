@@ -1,0 +1,65 @@
+# Every 5 minutes: one pass of the watchdog (watchdog.py, mounted from a ConfigMap into the stock
+# Python image). Run it now:
+#   kubectl -n monitoring create job watchdog-now --from=cronjob/watchdog
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: watchdog
+spec:
+  schedule: "*/5 * * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 0             # the next run is 5 minutes away
+      activeDeadlineSeconds: 240
+      template:
+        spec:
+          serviceAccountName: watchdog
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 10005      # no storage of its own; continues the UID series
+            runAsGroup: 10005
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: watchdog
+              image: python:3.14.8-slim-trixie@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
+              command: [python, /app/watchdog.py]
+              env:
+                - name: HOST_IP
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: status.hostIP
+                - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+                - {name: PYTHONUNBUFFERED, value: "1"}
+              envFrom:
+                - configMapRef:
+                    name: watchdog
+                - secretRef:
+                    name: healthchecks    # HEALTHCHECKS_API_KEY; without it, results are only logged
+                    optional: true
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: script, mountPath: /app, readOnly: true}
+                - {name: zfs, mountPath: /host/zfs, readOnly: true}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+          volumes:
+            - name: script
+              configMap:
+                name: watchdog-script
+            # Pool states (one directory per imported pool, with a `state` file). Read-only kstats.
+            - name: zfs
+              hostPath:
+                path: /proc/spl/kstat/zfs
+                type: Directory

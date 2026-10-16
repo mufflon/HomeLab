@@ -1,0 +1,30 @@
+# The watchdog reads CronJobs, Jobs, Deployments and DaemonSets in every namespace. Nothing else.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: watchdog
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: watchdog
+rules:
+  - apiGroups: [batch]
+    resources: [cronjobs, jobs]
+    verbs: [list]
+  - apiGroups: [apps]
+    resources: [deployments, daemonsets]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: watchdog
+subjects:
+  - kind: ServiceAccount
+    name: watchdog
+    namespace: monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: watchdog

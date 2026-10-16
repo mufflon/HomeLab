@@ -1,0 +1,17 @@
+# Monitoring: the watchdog CronJob reports the pool, CronJobs, workloads, endpoints and the
+# certificate to healthchecks.io, which does the alerting (see CLAUDE.md, "Alerts"). Its Secret,
+# healthchecks (the Management API key), comes from scripts/secrets.sh. ZED on the host reports
+# ZFS events to the same place (host/02-alerts.sh).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: monitoring
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - cronjob.yaml
+# Generators, so that editing watchdog.env or watchdog.py changes the next run.
+configMapGenerator:
+  - name: watchdog
+    envs: [watchdog.env]
+  - name: watchdog-script
+    files: [watchdog.py]

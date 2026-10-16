@@ -6,6 +6,8 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: paperbridge
+  annotations:
+    homelab/stale-after: 1h   # runs every 15 minutes; the watchdog alerts without a success for this long
 spec:
   schedule: "*/15 * * * *"
   timeZone: Etc/UTC

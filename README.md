@@ -10,8 +10,8 @@ one home network, one server and one person's reading habits.
 
 > **Status:** the research pipeline runs: Karakeep, Zotero's file
 > storage, and paperbridge, which hands papers to Zotero and keeps both
-> sides in sync, Zotero highlights included. Things
-> marked *(planned)* below aren't running yet. The detailed, current state is in the "Status"
+> sides in sync, Zotero highlights included. A watchdog reports failures
+> to healthchecks.io. Things marked *(planned)* below aren't running yet. The detailed, current state is in the "Status"
 > section of [CLAUDE.md](CLAUDE.md).
 
 ## What it's for
@@ -70,7 +70,9 @@ flowchart LR
     bridge["paperbridge<br/>(CronJob)"]
     ts["Zotero translation-server"]
     lego["lego<br/>(CronJob)"]
+    watchdog["watchdog<br/>(CronJob)"]
     zfs[("ZFS datasets<br/>+ snapshots")]
+    zed["ZED<br/>(ZFS events, on the host)"]
   end
 
   subgraph internet["Outbound only"]
@@ -78,6 +80,7 @@ flowchart LR
     papers["arXiv, Unpaywall,<br/>publishers' sites"]
     le["Let's Encrypt"]
     loopia["Loopia DNS API"]
+    hc["healthchecks.io<br/>(alerts)"]
   end
 
   browser --> traefik
@@ -98,13 +101,17 @@ flowchart LR
   lego -. "wildcard certificate" .-> traefik
   karakeep -.- zfs
   dav -.- zfs
+  watchdog --> hc
+  zed --> hc
 ```
 
 Only Traefik is reachable from the LAN. Everything else is cluster-internal.
-The only things that leave the house are outbound calls: zotero.org for
-library sync, Let's Encrypt plus Loopia's API for certificates, and the
-web itself, for the pages being saved and for papers' metadata and
-open-access PDFs.
+The only things that leave the house are outbound calls:
+- zotero.org, for library sync;
+- Let's Encrypt plus Loopia's API, for certificates;
+- healthchecks.io, for alerts;
+- the web itself, for the pages being saved and for papers' metadata and
+  open-access PDFs.
 
 ### Day to day
 
@@ -195,6 +202,19 @@ creates a minimal item tagged `needs-metadata` to fix by hand.
     it, instead of making a duplicate.
   - An emptied collection goes to Zotero's trash rather than being
     deleted, so nothing is lost by accident.
+- **Alerts come from outside the house.** A small watchdog checks every 5
+  minutes:
+  - the disk pool;
+  - the scheduled jobs (paperbridge, certificate renewal);
+  - that every service is running and answering;
+  - how long the certificate has left.
+
+  ZFS's own event daemon reports disk trouble the moment it happens, which
+  matters because all four disks hang off one USB enclosure. Each check
+  reports pass or fail to [healthchecks.io](https://healthchecks.io), which
+  sends the alert, by email or any push service it supports, and only when
+  something changes. It also notices when the reports stop, which is the
+  one failure a server can't report about itself: when it's off.
 - **Exact versions, updated by pull request.** Every image, package and
   tool is pinned to an exact version (images also to a digest), so the
   server never changes underneath you. To keep them current,
@@ -215,8 +235,8 @@ creates a minimal item tagged `needs-metadata` to fix by hand.
 |---|---|
 | `README.md` | This file: purpose, design, how to rebuild |
 | `CLAUDE.md` | The detailed spec and working notes. [Claude Code](https://claude.com/claude-code), the AI coding assistant this was built with, reads it at the start of every session. It has the exact versions, UIDs, gotchas and open questions. Worth reading for the "how exactly" |
-| `host/` | Idempotent scripts run once on the server with sudo (storage, MicroK8s) |
-| `k8s/` | Kubernetes manifests, one directory per area: `storage/` (ZFS-backed volumes), `ingress/` (certificates), `research/` (the apps) |
+| `host/` | Idempotent scripts run once on the server with sudo (storage, MicroK8s, ZFS alerts) |
+| `k8s/` | Kubernetes manifests, one directory per area: `storage/` (ZFS-backed volumes), `ingress/` (certificates), `research/` (the apps), `monitoring/` (the watchdog) |
 | `scripts/` | Helpers run from your machine: `secrets.sh` turns `.env` into Kubernetes Secrets |
 | `images/` | Third-party images we build ourselves, e.g. Zotero's translation-server, because the published one is ARM-only |
 | `services/paperbridge/` | The glue service: its Python source, tests and container build |
@@ -252,6 +272,11 @@ creates a minimal item tagged `needs-metadata` to fix by hand.
    - Optionally, an email address for Unpaywall's open-access lookup. It
      needs no account; it just asks callers to identify themselves.
    - The Karakeep API key is created during the build (step 4).
+   - A [healthchecks.io](https://healthchecks.io) account for alerts (the
+     free plan is enough). From its project's Settings → API Access, the
+     **read-write** API key goes in `.env`. The watchdog creates the checks
+     itself. Pick how alerts reach you under Integrations; email to the
+     account's address is there from the start.
    - For update pull requests, the
      [Renovate GitHub App](https://github.com/apps/renovate), installed on
      this repository only. It isn't needed to rebuild.
@@ -329,6 +354,17 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
      add a rule "when a bookmark is added, if the URL contains `arxiv.org`
      or `doi.org`, add the tag `paper`". Rules live in Karakeep's database,
      so they survive a rebuild with the data and aren't in this repo.
+
+8. **Alerts:** once the watchdog has run (it runs every 5 minutes, and
+   creates its checks in healthchecks.io), hook ZFS's event daemon up to
+   them:
+
+   ```bash
+   ssh -t minisforum 'sudo bash ./02-alerts.sh 2>&1 | tee 02-alerts.log'
+   ```
+
+   `sudo bash ./02-alerts.sh test` then proves it: it faults a disk in a
+   throwaway file-backed pool, and an alert should arrive within a minute.
 
 ## What this does not cover
 

@@ -194,11 +194,21 @@ service must authenticate on its own.
   - Annotations reached Zotero's server only after desktop synced. A
     comment added later needed another sync first.
 - **Renovate** (2026-10-16): `renovate.json` committed (see "Dependency
-  updates"). Waiting for the owner to install the GitHub App.
+  updates"). The owner installed the GitHub App, but two hours later there
+  was still no dashboard issue and no PR. Next: check HomeLab on
+  developer.mend.io (listed? interactive rather than silent? job log).
   - A local dry run found every pin. First updates it proposed: Traefik
     chart 39.0.9 (and 42.0.0 as a major), Python 3.15 for paperbridge,
     digests for the three tag-only images (webdav, lego, kubectl), Actions
     pinned to SHAs. Meilisearch v1.55 and kubectl 1.37 wait for approval.
+- **Alerts** (2026-10-16, in progress; see "Alerts"):
+  - The watchdog is deployed and runs every 5 minutes, logging only until
+    `HEALTHCHECKS_API_KEY` is set. All checks pass.
+  - The failure paths were tried with one-off Jobs that override its
+    settings: a missing pool, a Traefik 404, a refused port.
+  - Waiting for the owner's healthchecks.io account and key. Then:
+    `scripts/secrets.sh`, `host/02-alerts.sh` (sudo), and one real alert
+    per check.
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
@@ -427,6 +437,93 @@ the router VPN when away.
 
 **Karakeep.** Its own login. Set `DISABLE_SIGNUPS=true` once the owner's
 account exists. `NEXTAUTH_SECRET` and `MEILI_MASTER_KEY` come from `.env`.
+
+### Alerts: healthchecks.io
+
+Nothing on the server notifies anyone directly. Every check reports pass
+or fail to its own check in a [healthchecks.io](https://healthchecks.io)
+project. healthchecks.io alerts on changes (up → down, down → up) through
+the project's integrations.
+- The owner chose this on 2026-10-16. The channel is picked in
+  healthchecks.io, with no change here; email to the account's address
+  comes with sign-up.
+- healthchecks.io also notices when reports **stop**, which nothing on the
+  server can.
+
+**Watchdog** (`k8s/monitoring/`): a CronJob every 5 minutes.
+`watchdog.py` (standard library only) is mounted from a ConfigMap into the
+stock `python` image and runs as UID 10005. Its settings are in
+`watchdog.env`.
+
+| Check (slug) | Fails when | How |
+|---|---|---|
+| `zfs` | a pool in `POOLS` isn't imported, or an imported pool isn't `ONLINE` (e.g. `DEGRADED`, `SUSPENDED` when the enclosure drops); or ZED sends a notification | `/proc/spl/kstat/zfs/<pool>/state` through a read-only hostPath; ZED on the host (below) |
+| `cronjobs` | a CronJob's latest finished Job failed; or it had no success within its `homelab/stale-after` annotation (paperbridge `1h`, lego `26h`), suspended or not | API, all namespaces |
+| `workloads` | a Deployment's rollout is stuck (`Progressing=False`), or it is unavailable outside a rollout; a DaemonSet has fewer available pods than desired | API, all namespaces |
+| `endpoints` | Karakeep `/api/health` isn't `200`, WebDAV without a login isn't `401`, Jellyfin's `/health` (on the node, port 8096) isn't `200` | through Traefik under the public names, so DNS, ingress and certificate count too |
+| `certificate` | the certificate Traefik serves has less than `CERT_MIN_FRACTION` (0.2) of its lifetime left, or TLS fails | TLS handshake |
+| `heartbeat` | no ping for 5 + 10 minutes | pinged last in every run |
+
+- **Each run upserts every check** through the Management API
+  (`unique: ["slug"]`). Name, period, grace, description and integrations
+  (`channels: "*"`, i.e. all of the project's) are therefore defined in
+  `watchdog.py`.
+  - Edits made in the healthchecks.io UI are reset within 5 minutes.
+  - An integration added later reaches every check on the next run.
+  - Then it pings: success with a summary, or `/fail` with one problem per
+    line.
+- **Only the heartbeat alerts on silence quickly** (period 5 minutes, grace
+  10). The others have a period of a week, so a dead server raises one
+  alert, not six.
+- Workloads and endpoints that fail are checked again after
+  `RETRY_SECONDS` (60) before they count, so a pod restart or Traefik's
+  few-second rollout blip doesn't alert.
+- Detected problems don't fail the watchdog's Job. Only its own errors do
+  (e.g. healthchecks.io unreachable), and the next run's `cronjobs` check
+  then reports that.
+- The certificate threshold is a fraction because Let's Encrypt lifetimes
+  are shrinking (90 days now, 45 by 2028). lego renews with a third left,
+  so an alert means renewal has failed for a while; the `cronjobs` check
+  should have said so first.
+- Messages go to a third party, so endpoint URLs keep `{HOST_IP}` rather
+  than the LAN address.
+- Without the `healthchecks` Secret (an optional `secretRef`), it only
+  logs: `kubectl -n monitoring logs job/<latest>`. To try a failure, run
+  a Job from the CronJob with overridden settings (e.g. an extra
+  `ENDPOINTS` entry, `CERT_MIN_FRACTION=1`), as in "Status".
+
+**ZED** (`host/02-alerts.sh`), ZFS's event daemon on the host, reports to
+the same `zfs` check through its **mail hook**.
+- `ZED_EMAIL_PROG=/usr/local/sbin/zed-healthchecks` posts the notification
+  to the check's ping URL plus `/fail`.
+- ZED calls it as `<prog> -s '<subject>' root` (the default
+  `ZED_EMAIL_OPTS`), with the message on stdin. `ZED_EMAIL_ADDR` must be
+  set for ZED to call it at all.
+- ZED's own zedlets decide what's worth a notification:
+  - a disk `FAULTED`, `DEGRADED`, `REMOVED` or `UNAVAIL`;
+  - data errors;
+  - scrubs and resilvers that end unhealthy (`ZED_NOTIFY_VERBOSE` stays
+    0).
+
+  It sends at most one per pool and kind of event per hour
+  (`ZED_NOTIFY_INTERVAL_SECS=3600`).
+- The ping URL is looked up once, with the Secret's key, and kept
+  root-only in `/etc/zfs/zed.d/healthchecks-ping-url`. Rerun the script if
+  the check is ever recreated.
+- If the pool is still `ONLINE`, the watchdog's next run sets the check
+  back to up. A corrected error therefore gives a down/up pair, with ZED's
+  text in the down alert.
+- OpenZFS 2.4.1 also has ntfy, Pushover, Slack and Gotify built into
+  `zed.rc`. They're unused: one hub instead.
+- Ubuntu's cron scrubs on the second Sunday of each month; that only
+  alerts when it finds something.
+
+**Not covered:**
+- USB resets of the enclosure that cause no ZFS error;
+- SMART (pass-through unverified);
+- host services other than Jellyfin;
+- ZED itself stopping;
+- the UPS (deferred).
 
 ### Dependency updates: Renovate
 
@@ -750,6 +847,7 @@ renovate.json             # weekly dependency-update PRs (see "Dependency update
 host/
   00-prep.sh              # ZFS datasets + sanoid
   01-microk8s.sh          # MicroK8s + hardened Traefik ingress addon
+  02-alerts.sh            # ZED → healthchecks.io (after the watchdog has run once)
 k8s/
   kustomization.yaml      # root: kubectl apply -k k8s/ rebuilds everything
   ingress/                # lego CronJob, RBAC, certs PV/PVC
@@ -760,6 +858,7 @@ k8s/
     translation-server/
     karakeep/
     paperbridge/
+  monitoring/             # the watchdog CronJob (see "Alerts")
 scripts/secrets.sh        # .env → Kubernetes Secrets
 images/translation-server/  # UPSTREAM_REF: which upstream commit we build
 services/paperbridge/     # Python package + Dockerfile

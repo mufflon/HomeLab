@@ -5,6 +5,8 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: lego
+  annotations:
+    homelab/stale-after: 26h   # runs daily at 03:23 UTC; the watchdog alerts without a success for this long
 spec:
   schedule: "23 3 * * *"
   timeZone: Etc/UTC

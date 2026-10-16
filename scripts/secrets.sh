@@ -55,3 +55,7 @@ secret research karakeep \
 secret research paperbridge \
   KARAKEEP_API_KEY=KARAKEEP_API_KEY ZOTERO_USER_ID=ZOTERO_USER_ID ZOTERO_API_KEY=ZOTERO_API_KEY \
   UNPAYWALL_EMAIL=UNPAYWALL_EMAIL?
+
+# Watchdog (k8s/monitoring) and ZED on the host (host/02-alerts.sh): the healthchecks.io
+# Management API key (read-write) of the project the checks live in.
+secret monitoring healthchecks HEALTHCHECKS_API_KEY=HEALTHCHECKS_API_KEY

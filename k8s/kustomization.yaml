@@ -5,3 +5,4 @@ resources:
   - storage
   - ingress
   - research
+  - monitoring
