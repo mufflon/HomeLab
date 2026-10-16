@@ -61,32 +61,34 @@ class FakeZotero:
     def __init__(self):
         self.items = {}
         self.writes = []
+        self.scans = 0
 
     def key_info(self):
         return {"userID": 1, "username": "owner", "access": {"user": {"library": True, "write": True}}}
 
-    def search_top(self, q):
-        q = q.lower()
-        return [
-            dict(i)
-            for i in self.items.values()
-            if "parentItem" not in i and any(q in str(v).lower() for v in i.values())
-        ]
+    def top_items(self):
+        self.scans += 1
+        return [dict(i) for i in self.items.values() if "parentItem" not in i]
 
     def children(self, key):
         return [dict(i) for i in self.items.values() if i.get("parentItem") == key]
 
     def create(self, objects):
         self.writes.append(("create", [o["itemType"] for o in objects]))
-        for n, o in enumerate(objects):
+        stored = []
+        for o in objects:
             # Like Zotero: a client-chosen key needs version 0 (or If-Unmodified-Since-Version).
             assert "key" not in o or o.get("version") == 0, f"key without version: {o}"
-            key = o.get("key") or f"SRV{len(self.items) + n:05d}"  # the server assigns missing keys
+            key = o.get("key") or f"SRV{len(self.items):05d}"  # the server assigns missing keys
             self.items[key] = {**o, "key": key, "version": 1}
+            stored.append(dict(self.items[key]))
+        return stored
 
     def update(self, key, version, fields):
+        assert version == self.items[key]["version"], "stale version"
         self.writes.append(("update", key))
-        self.items[key].update(fields)
+        self.items[key].update(fields, version=version + 1)
+        return version + 1
 
 
 class FakeWebDAV:
@@ -202,6 +204,17 @@ def test_links_a_second_bookmark_with_the_same_doi(world):
     [parent] = [i for i in zotero.items.values() if i["itemType"] == "preprint"]
     assert zotero.writes == [("update", parent["key"])]  # Extra gains a line, no new item or PDF
     assert parent["extra"].endswith("/dashboard/preview/bm1\nKarakeep: https://karakeep.example/dashboard/preview/bm2")
+
+
+def test_two_bookmarks_of_one_paper_in_one_run(world):
+    handoff, karakeep, zotero, dav = world
+    karakeep.bookmarks["bm2"] = bookmark("bm2", "https://arxiv.org/pdf/1706.03762v7")
+    karakeep.bookmarks["bm3"] = bookmark("bm3", "https://arxiv.org/abs/1706.03762v2")
+    assert handoff.run() == 0
+    assert [i["itemType"] for i in zotero.items.values()].count("preprint") == 1
+    [parent] = [i for i in zotero.items.values() if i["itemType"] == "preprint"]
+    assert parent["extra"].count("Karakeep: ") == 3
+    assert zotero.scans == 1
 
 
 def test_karakeeps_pdf_copy_wins(world):

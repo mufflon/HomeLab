@@ -5,6 +5,7 @@ Idempotent, with no state of its own:
 - a "Karakeep: <bookmark link>" line in the Zotero item's Extra finds the item again if a run
   stopped between creating it and tagging the bookmark;
 - a DOI already in the library is linked instead of duplicated.
+Both lookups read the library's top-level items, once per run that has work to do.
 """
 
 import logging
@@ -78,6 +79,7 @@ class Handoff:
         self.dry_run = dry_run
         self.now = now
         self.web_library = ""  # https://www.zotero.org/<user>/items, once the API key is checked
+        self.library: list[dict] | None = None  # Zotero's top-level items, read once per run
 
     def run(self, only: str | None = None) -> int:
         """Hand off every pending bookmark. Returns how many failed; the next run retries them."""
@@ -125,7 +127,7 @@ class Handoff:
         log.info("bookmark %s: %s", bid, url or bookmark.get("title") or content.get("fileName"))
 
         new: list[dict] = []  # Zotero objects to create, in one request
-        parent = self._find(bid, lambda item: marker in (item.get("extra") or "").splitlines())
+        parent = self._find(lambda item: marker in (item.get("extra") or "").splitlines())
         if parent:
             log.info("already in Zotero as %s (from an earlier run)", parent["key"])
         else:
@@ -134,16 +136,18 @@ class Handoff:
                 return
             item, notes = found
             doi = item_doi(item)
-            parent = self._find(doi, lambda i: item_doi(i) == doi) if doi else None
+            parent = self._find(lambda i: item_doi(i) == doi) if doi else None
             if parent:
                 log.info("DOI %s is already in Zotero as %s; linking to it", doi, parent["key"])
-                self._write(
+                extra = append_line(parent.get("extra"), marker)
+                version = self._write(
                     f"add {marker!r} to the Extra of {parent['key']}",
                     self.zotero.update,
                     parent["key"],
                     parent["version"],
-                    {"extra": append_line(parent.get("extra"), marker)},
+                    {"extra": extra},
                 )
+                parent.update(extra=extra, version=version or parent["version"])
             else:
                 # version 0: "new" to Zotero's API, which requires it with a client-chosen key.
                 parent = {
@@ -165,11 +169,20 @@ class Handoff:
             else:
                 log.info("no PDF found; Zotero desktop's Find Available PDF can try")
         if new:
-            self._write(f"create {len(new)} Zotero object(s)", self.zotero.create, new)
+            try:
+                created = self._write(f"create {len(new)} Zotero object(s)", self.zotero.create, new)
+            except Exception:
+                self.library = None  # some objects may exist now: read the library again
+                raise
+            if new[0] is parent:  # a new parent: later bookmarks in this run must see it
+                self.library.append(created[0] if created else parent)
         self._mark_done(bookmark, parent["key"])
 
-    def _find(self, query: str, match: Callable[[dict], bool]) -> dict | None:
-        return next((i for i in self.zotero.search_top(query) if match(i)), None)
+    def _find(self, match: Callable[[dict], bool]) -> dict | None:
+        if self.library is None:
+            self.library = self.zotero.top_items()
+            log.info("Zotero library: %d top-level items", len(self.library))
+        return next((i for i in self.library if match(i)), None)
 
     def _metadata(self, bookmark: dict, url: str | None, text: str | None):
         found = lookup(self.ts, url, text)
@@ -236,8 +249,8 @@ class Handoff:
             self._write("add the Zotero links to the bookmark's note", self.karakeep.set_note, bid, new_note)
         self._write(f"tag the bookmark {self.cfg.done_tag!r}", self.karakeep.add_tag, bid, self.cfg.done_tag)
 
-    def _write(self, what: str, fn: Callable, *args) -> None:
+    def _write(self, what: str, fn: Callable, *args):
         if self.dry_run:
             log.info("dry run: would %s", what)
-        else:
-            fn(*args)
+            return None
+        return fn(*args)

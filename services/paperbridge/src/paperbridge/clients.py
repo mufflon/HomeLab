@@ -112,16 +112,25 @@ class Zotero(API):
         """The API key's owner and rights (GET /keys/current)."""
         return self.request("GET", f"{self.api_url}/keys/current").json()
 
-    def search_top(self, query: str) -> list[dict]:
-        """Top-level items matching a quick search in "All Fields & Tags" mode (it covers DOI and Extra)."""
-        params = {"q": query, "qmode": "everything", "limit": 100}
-        return [i["data"] for i in self.request("GET", "/items/top", params=params).json()]
+    def top_items(self) -> list[dict]:
+        """Every top-level item outside the trash, 100 per request.
+
+        Quick search (q=) can't stand in: even qmode=everything matches only title, creators,
+        year, notes and full text, not the DOI or Extra fields.
+        """
+        items: list[dict] = []
+        while True:
+            response = self.request("GET", "/items/top", params={"limit": 100, "start": len(items)})
+            page = [i["data"] for i in response.json()]
+            items += page
+            if not page or len(items) >= int(response.headers.get("Total-Results", 0)):
+                return items
 
     def children(self, key: str) -> list[dict]:
         return [i["data"] for i in self.request("GET", f"/items/{key}/children").json()]
 
-    def create(self, objects: list[dict]) -> None:
-        """POST new items in one request; every one must succeed."""
+    def create(self, objects: list[dict]) -> list[dict]:
+        """POST new items in one request; every one must succeed. Returns them as stored."""
         result = self.request(
             "POST",
             "/items",
@@ -130,15 +139,18 @@ class Zotero(API):
         ).json()
         if result.get("failed"):
             raise RuntimeError(f"Zotero rejected items: {result['failed']}")
+        return [result["successful"][str(i)]["data"] for i in range(len(objects))]
 
-    def update(self, key: str, version: int, fields: dict) -> None:
-        """PATCH some fields of an item, only if nobody changed it since `version`."""
-        self.request(
+    def update(self, key: str, version: int, fields: dict) -> int:
+        """PATCH some fields of an item, only if nobody changed it since `version`. Returns the
+        item's new version."""
+        response = self.request(
             "PATCH",
             f"/items/{key}",
             json=fields,
             headers={"If-Unmodified-Since-Version": str(version)},
         )
+        return int(response.headers["Last-Modified-Version"])
 
 
 class WebDAV(API):
