@@ -216,10 +216,16 @@ service must authenticate on its own.
     - #5 paperbridge on Python 3.15, released as **0.4.1** (no code
       changes). Its CronJob is pinned to the new digest, and a live run
       synced 2 pairs and changed nothing.
-    - #4 Traefik chart 39.0.9 is merged but **not yet on the server**: it
-      needs `host/01-microk8s.sh` run with sudo. The first try timed out
-      at the sudo prompt; the server still runs chart 39.0.8 (Traefik
-      v3.6.13).
+    - #4 Traefik chart 39.0.9 (Traefik v3.6.13 → v3.6.15). The owner
+      reran `host/01-microk8s.sh` on 2026-10-16 at 23:27 UTC (the first
+      try had timed out at the sudo prompt).
+      - The addon step said "already enabled"; the `helm upgrade` did the
+        work (revision 4). MicroK8s stayed on `1.36/stable`, no refresh.
+      - Verified from the LAN: Karakeep `200`, WebDAV `401` without a
+        login, HTTP `301` to HTTPS, an unknown name `404`, the dashboard
+        and its API `404` with `Host: dashboard.localhost`, Let's
+        Encrypt's wildcard served.
+      - No alert flipped through the WebDAV rollout or Traefik's restart.
     - Still open: #6, Traefik chart 42, a major. Read its release notes
       against the values `host/01-microk8s.sh` sets before merging.
     - On approval only: kubectl 1.37 (waits for MicroK8s 1.37) and
@@ -354,8 +360,8 @@ Facts that matter when working here, verified 2026-10-15.
 
 ### Access: LAN ingress with a wildcard certificate
 
-- **Ingress.** The MicroK8s `ingress` addon is **Traefik** (chart 39.0.8,
-  Traefik v3.6), not ingress-nginx, which upstream retired in 2026. It runs
+- **Ingress.** The MicroK8s `ingress` addon is **Traefik** (chart 39.0.9,
+  Traefik v3.6.15), not ingress-nginx, which upstream retired in 2026. It runs
   as a DaemonSet on host ports 80/443. `host/01-microk8s.sh` enables it
   with `--default-ssl-certificate ingress/wildcard-home-tls`, which creates
   Traefik's default `TLSStore`. The script then hardens it through a Helm
