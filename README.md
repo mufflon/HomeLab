@@ -319,6 +319,12 @@ ssh -t minisforum 'sudo bash ./01-microk8s.sh 2>&1 | tee 01-microk8s.log'
 
 ## What this does not cover
 
+- **Highlights made in Karakeep don't reach Zotero.** Zotero's highlights
+  are copied into Karakeep, but not the other way: a Karakeep highlight
+  marks a spot in its text of a page, while Zotero needs a spot on a PDF
+  page. Comments do sync both ways. This may be solvable later; see
+  CLAUDE.md.
+
 - **Clean shutdown on power loss.** There is a UPS, but it isn't connected
   to the server, so a long outage still ends in a hard power-off. A USB
   link plus NUT would fix that.

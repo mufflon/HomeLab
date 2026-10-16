@@ -558,6 +558,14 @@ both ways. Files and structure don't (see the rule at the top).
     offsets in its text view of a page. A Zotero annotation needs a
     position on a PDF page, and there is no reliable mapping between the
     two. Karakeep's highlights stay searchable in Karakeep.
+  - **Open problem** (owner, 2026-10-16): highlights are therefore
+    one-way, unlike comments. It may be solvable later; it's unknown
+    whether it will be. Ideas, none built:
+    - Copy Karakeep highlights into Zotero as text, e.g. a section in the
+      "From Karakeep" note. That's searchable in Zotero, but they would
+      not be annotations on the PDF.
+    - If Karakeep ever offers highlights on PDFs with page positions, map
+      those to Zotero annotations.
   - Cost: annotations and attachments are read whole (`itemType=...`),
     but only when the library version moved since the last build. Each
     item's section is cached in `state.json`. A run that writes to
