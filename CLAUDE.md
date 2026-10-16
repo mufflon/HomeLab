@@ -168,8 +168,11 @@ service must authenticate on its own.
   - Cleanup: the original title, abstract (re-fetched from
     translation-server) and Extra were restored. The test note is in
     Zotero's trash. The unused `read-2026-10` tag was deleted.
-  - The owner still has to install the Reading List plugin in Zotero
-    desktop for read status to start flowing.
+  - The Reading List plugin is installed in the owner's Zotero desktop,
+    and read status was verified with it on 2026-10-16. Marking the test
+    paper Read in Zotero archived both linked bookmarks on the next run and
+    tagged them `read-2026-10`. The paper is left marked Read: it was a real
+    read.
 - **Next: paperbridge v2:** annotations → Karakeep.
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
