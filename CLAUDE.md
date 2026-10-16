@@ -205,17 +205,30 @@ service must authenticate on its own.
   - Then: lock-file maintenance off (there are no lock files), and the
     CI's Python moved into the paperbridge group.
   - The first PRs were opened early, by ticking the dashboard's
-    "create all awaiting schedule PRs" box. None merged yet:
-    - #2 GitHub Actions: pinned to SHAs. CI green.
-    - #3 cluster images: digests for lego, kubectl and webdav; the
-      watchdog on Python 3.15.
-    - #4 host scripts: Traefik chart 39.0.9.
-    - #5 paperbridge: Python 3.15 in the Dockerfile and CI. CI green, so
-      the tests pass on 3.15.
-    - #6 Traefik chart 42, a major: read its release notes against the
-      values `host/01-microk8s.sh` sets before merging.
+    "create all awaiting schedule PRs" box. #2–#5 were merged on
+    2026-10-16 at the owner's request:
+    - #2 GitHub Actions, pinned to SHAs.
+    - #3 cluster images: digests for lego, kubectl and webdav, and the
+      watchdog on Python 3.15. Applied and verified:
+      - webdav rolled out;
+      - a lego run pulled by digest and skipped renewal;
+      - a watchdog run on 3.15 found everything fine.
+    - #5 paperbridge on Python 3.15, released as **0.4.1** (no code
+      changes). Its CronJob is pinned to the new digest, and a live run
+      synced 2 pairs and changed nothing.
+    - #4 Traefik chart 39.0.9 is merged but **not yet on the server**: it
+      needs `host/01-microk8s.sh` run with sudo. The first try timed out
+      at the sudo prompt; the server still runs chart 39.0.8 (Traefik
+      v3.6.13).
+    - Still open: #6, Traefik chart 42, a major. Read its release notes
+      against the values `host/01-microk8s.sh` sets before merging.
     - On approval only: kubectl 1.37 (waits for MicroK8s 1.37) and
       Meilisearch 1.55.
+  - Gotcha: `gh pr merge` refuses a PR that changes
+    `.github/workflows/*` unless gh's token has the `workflow` scope
+    (#2 went through anyway, #5 didn't). #5 was merged locally with
+    `git merge --no-ff` and pushed over SSH; GitHub then marks the PR
+    merged.
   - A local dry run found every pin. First updates it proposed: Traefik
     chart 39.0.9 (and 42.0.0 as a major), Python 3.15 for paperbridge,
     digests for the three tag-only images (webdav, lego, kubectl), Actions
