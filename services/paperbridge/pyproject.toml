@@ -2,7 +2,7 @@
 name = "paperbridge"
 # The only place the version lives. A matching vX.Y.Z tag publishes ghcr.io/mufflon/paperbridge:X.Y.Z
 # (.github/workflows/paperbridge.yml).
-version = "0.2.1"
+version = "0.3.0"
 description = "Hands papers bookmarked in Karakeep over to Zotero, PDFs via Zotero's WebDAV storage"
 readme = "README.md"
 requires-python = ">=3.14"

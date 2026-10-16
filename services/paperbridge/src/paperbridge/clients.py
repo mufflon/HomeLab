@@ -86,6 +86,13 @@ class Karakeep(API):
     def add_tag(self, bookmark_id: str, name: str) -> None:
         self.request("POST", f"/bookmarks/{bookmark_id}/tags", json={"tags": [{"tagName": name}]})
 
+    def update(self, bookmark_id: str, fields: dict) -> dict:
+        """PATCH a bookmark; returns it as stored."""
+        return self.request("PATCH", f"/bookmarks/{bookmark_id}", json=fields).json()
+
+    def remove_tag(self, bookmark_id: str, name: str) -> None:
+        self.request("DELETE", f"/bookmarks/{bookmark_id}/tags", json={"tags": [{"tagName": name}]})
+
     def lists(self) -> list[dict]:
         """All lists, manual and smart, owned by or shared with the user (not paginated)."""
         return self.request("GET", "/lists").json()["lists"]
@@ -127,6 +134,13 @@ class Zotero(API):
         """
         return self._all("/items/top")
 
+    def notes(self) -> list[dict]:
+        """Every note, child or standalone, outside the trash."""
+        return self._all("/items", itemType="note")
+
+    def item(self, key: str) -> dict:
+        return self.request("GET", f"/items/{key}").json()["data"]
+
     def collections(self) -> list[dict]:
         """Every collection, including those in the trash (flagged `deleted`)."""
         return self._all("/collections")
@@ -166,10 +180,10 @@ class Zotero(API):
         )
         return int(response.headers["Last-Modified-Version"])
 
-    def _all(self, path: str) -> list[dict]:
+    def _all(self, path: str, **params) -> list[dict]:
         objects: list[dict] = []
         while True:
-            response = self.request("GET", path, params={"limit": 100, "start": len(objects)})
+            response = self.request("GET", path, params={**params, "limit": 100, "start": len(objects)})
             page = [o["data"] for o in response.json()]
             objects += page
             if not page or len(objects) >= int(response.headers.get("Total-Results", 0)):

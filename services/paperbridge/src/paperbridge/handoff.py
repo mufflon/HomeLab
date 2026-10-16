@@ -6,7 +6,8 @@ Idempotent, with no state of its own:
   stopped between creating it and tagging the bookmark;
 - a DOI already in the library is linked instead of duplicated.
 Both lookups read the library's top-level items, once per run. mirror.py then files the
-items into collections that mirror the chosen Karakeep lists.
+items into collections that mirror the chosen Karakeep lists, and sync.py syncs metadata,
+comments and read status between items and their bookmarks.
 """
 
 import logging
@@ -21,6 +22,7 @@ from .clients import Karakeep, TranslationServer, WebDAV, Zotero
 from .config import Config
 from .files import PDF, attachment_filename, find_pdf, md5, prop_for_webdav, zip_for_webdav
 from .mirror import Mirror
+from .sync import State, Sync, zotero_links
 from .metadata import (
     Identifiers,
     arxiv_submission_date,
@@ -125,7 +127,34 @@ class Handoff:
             except Exception:
                 failed += 1
                 log.exception("mirroring Karakeep's lists failed; the next run retries it")
+        if only is None and self.cfg.state_path:
+            failed += self._sync(tagged, {b["id"] for b in pending})
         return failed
+
+    def _sync(self, tagged: list[dict], handed_off: set[str]) -> int:
+        if not self.web_library:
+            self._check_zotero_key()
+        state = State(self.cfg.state_path)
+        sync = Sync(
+            self.karakeep,
+            self.zotero,
+            state,
+            bookmark_prefix=self.bookmark_prefix,
+            web_library=self.web_library,
+            read_status=self.cfg.read_status,
+            read_tag_format=self.cfg.read_tag_format,
+            write=self._write,
+            dry_run=self.dry_run,
+            now=self.now,
+        )
+        try:
+            return sync.run(self._library(), {b["id"]: b for b in tagged}, handed_off)
+        except Exception:
+            log.exception("syncing failed; the next run retries it")
+            return 1
+        finally:
+            if not self.dry_run:
+                state.save()
 
     def _check_zotero_key(self) -> None:
         info = self.zotero.key_info()
@@ -302,7 +331,7 @@ class Handoff:
         bid = bookmark["id"]
         note = bookmark.get("note") or ""
         if key not in note:
-            links = f"Zotero: zotero://select/library/items/{key}\n{self.web_library}/{key}"
+            links = zotero_links(key, self.web_library)
             new_note = f"{note.rstrip()}\n\n{links}" if note.strip() else links
             self._write("add the Zotero links to the bookmark's note", self.karakeep.set_note, bid, new_note)
         self._write(f"tag the bookmark {self.cfg.done_tag!r}", self.karakeep.add_tag, bid, self.cfg.done_tag)

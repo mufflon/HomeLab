@@ -9,3 +9,4 @@ resources:
   - pv-zotero-webdav.yaml
   - pv-karakeep.yaml
   - pv-meilisearch.yaml
+  - pv-paperbridge.yaml

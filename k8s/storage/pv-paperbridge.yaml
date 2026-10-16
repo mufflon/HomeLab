@@ -1,0 +1,24 @@
+# hddpool/k8s/paperbridge: paperbridge's sync snapshot (last-synced values per Zotero item and
+# Karakeep bookmark), owned 10004 like its CronJob.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: paperbridge
+spec:
+  capacity:
+    storage: 1Gi        # informational for local volumes; the dataset has no quota
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: zfs-local
+  claimRef:
+    namespace: research
+    name: paperbridge
+  local:
+    path: /hddpool/k8s/paperbridge
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [minisforum]

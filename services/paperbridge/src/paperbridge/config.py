@@ -38,6 +38,12 @@ class Config:
     # Top-level Karakeep lists to mirror as Zotero collections, with their sublists (MIRROR_LISTS,
     # comma-separated). Empty: no mirroring.
     mirror_lists: tuple[str, ...] = ()
+    # The sync's snapshot of last-synced values (STATE_PATH). Unset: no sync.
+    state_path: str | None = None
+    # The Zotero Reading List plugin's status that means "read", and the Karakeep tag it becomes
+    # (strftime of the plugin's Read_Status_Date).
+    read_status: str = "Read"
+    read_tag_format: str = "read-%Y-%m"
 
     @classmethod
     def from_env(cls, env=os.environ) -> "Config":
@@ -60,4 +66,7 @@ class Config:
             done_tag=env.get("DONE_TAG") or cls.done_tag,
             metadata_grace_hours=float(env.get("METADATA_GRACE_HOURS") or cls.metadata_grace_hours),
             mirror_lists=tuple(n.strip() for n in (env.get("MIRROR_LISTS") or "").split(",") if n.strip()),
+            state_path=env.get("STATE_PATH") or None,
+            read_status=env.get("READ_STATUS") or cls.read_status,
+            read_tag_format=env.get("READ_TAG_FORMAT") or cls.read_tag_format,
         )

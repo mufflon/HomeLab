@@ -10,9 +10,10 @@ declare -A OWNER=(
   [meilisearch]=10002:10002     # single binary, runs as non-root
   [certs]=10003:10003           # lego: single binary, runs as non-root
   [karakeep]=0:0                # s6-overlay /init needs root
+  [paperbridge]=10004:10004     # its sync snapshot (state.json); runs as non-root
 )
 declare -A MODE=([certs]=0700)  # private keys; everything else 0750
-SNAPSHOTTED=(zotero-webdav karakeep certs)   # meilisearch is rebuildable from Karakeep
+SNAPSHOTTED=(zotero-webdav karakeep certs paperbridge)   # meilisearch is rebuildable from Karakeep
 SANOID_CONF=/etc/sanoid/sanoid.conf
 MARKER="# managed by homelab/host/00-prep.sh"
 
