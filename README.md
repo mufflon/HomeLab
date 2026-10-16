@@ -161,15 +161,20 @@ creates a minimal item tagged `needs-metadata` to fix by hand.
     checksum format Zotero desktop uses there, and only then creates the
     attachment in the library. Zotero desktop downloads it like any synced
     file.
-- **One structure, kept in Karakeep.**
-  - Two services with their own folders would drift apart. So Zotero's
-    collections follow Karakeep's lists one-way, and are never organized
-    by hand.
+- **One entry point for files and structure: Karakeep.**
+  - Syncing files and folders in two directions invites conflicts. So
+    PDFs and Karakeep's lists flow one way, Karakeep → Zotero, and
+    Zotero's collections are never organized by hand.
+  - Comments and metadata are different: those will sync both ways
+    *(planned)*, field by field, with Zotero winning when both sides
+    changed the same thing.
   - Karakeep holds more than papers. Only the lists named in
     `MIRROR_LISTS` (in `k8s/research/paperbridge/paperbridge.env`) are
     mirrored, with everything under them.
   - Papers added to Zotero directly, and collections outside those trees,
-    are left alone.
+    are left alone. To bring such a paper into Karakeep, take its PDF out
+    of Zotero and add it there. paperbridge recognises the paper and links
+    it, instead of making a duplicate.
   - An emptied collection goes to Zotero's trash rather than being
     deleted, so nothing is lost by accident.
 - **The repo is the rebuild recipe.** Host setup is idempotent scripts.

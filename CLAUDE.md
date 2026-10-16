@@ -140,7 +140,11 @@ service must authenticate on its own.
     throwaway bookmark and its Extra line were then removed.
   - Every run now reads the Zotero library, even with nothing to hand
     off. That is about one request per 100 items, plus the collections.
-- **Next: step 6, paperbridge v1:** read-status sync back.
+- **Next: step 6, paperbridge v1:**
+  - read status, Zotero → Karakeep;
+  - metadata and comments, both ways;
+  - the plan is under paperbridge, "Sync". The rule it follows is at the
+    top of that section.
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
@@ -369,9 +373,20 @@ account exists. `NEXTAUTH_SECRET` and `MEILI_MASTER_KEY` come from `.env`.
 
 ### paperbridge: Karakeep → Zotero → Karakeep
 
-A Python CronJob, every 15 minutes. It must be idempotent: tags and
-Zotero's `Extra` field carry all state, plus the last-seen Zotero library
-version for incremental sync.
+**One entry point for files and structure** (owner, 2026-10-16). This is
+the governing rule; everything below follows from it.
+
+- Karakeep is the single entry point for files (PDFs) and for structure
+  (lists → collections). Both flow one way, Karakeep → Zotero.
+- Papers added to Zotero directly stay in Zotero and are never synced
+  back. To bring one into Karakeep, download its PDF from Zotero and add
+  it there. paperbridge links it to the existing item instead of making a
+  duplicate (0.2.1, tested).
+- Comments and metadata may sync both ways (step 6, "Sync" below).
+
+A Python CronJob, every 15 minutes. It must be idempotent. In v0, tags and
+Zotero's `Extra` field carry all state. v1 adds a small snapshot for
+two-way sync (below).
 
 **Handoff, for each bookmark tagged `paper` but not `in-zotero`:**
 
@@ -451,13 +466,37 @@ mirrored.
 - Tested live on 2026-10-16 with throwaway lists: file, move, remove a
   list, rerun (no changes). The test collections are in Zotero's trash.
 
-**Sync back.**
+**Sync (step 6; planned, not built).** Comments and metadata sync both
+ways. Files and structure don't (see the rule at the top).
 
-- **Read status:** when the Zotero Reading List plugin marks a paper Read,
-  archive the bookmark in Karakeep and add a read-date tag. This replaces
-  the separate read-date CronJob idea.
-- **Highlights (later):** copy Zotero annotations and comments into the
-  bookmark's note, so a Karakeep search also finds highlighted passages.
+- **State is needed.** To sync both ways, paperbridge has to know which
+  side changed since the last sync.
+  - v1 keeps a small snapshot per linked item: the last-synced values
+    plus Zotero's item version.
+  - It lives on a new ZFS dataset, `hddpool/k8s/paperbridge`. That needs
+    a `host/00-prep.sh` run with the owner's sudo password.
+  - Rejected: "newest whole item wins", with no state. It overwrites
+    edits made on the other side, and paperbridge's own writes would make
+    the two sides keep overwriting each other.
+- **Metadata** (title, authors, date, abstract): a three-way merge per
+  field, against the snapshot.
+  - A field changed on one side is copied to the other.
+  - A field changed on both sides: **Zotero wins**, since that's where
+    bibliographic data gets curated.
+- **Comments:** the Karakeep bookmark's note and one Zotero child note,
+  "From Karakeep", stay in sync both ways.
+  - paperbridge's own Zotero-link lines in the bookmark's note are left
+    out.
+  - Changed on both sides: keep both texts, with a conflict marker.
+    Nothing is ever dropped.
+- **Annotations** (Zotero highlights and their comments): one way,
+  Zotero → Karakeep, into the bookmark. Zotero wins, because a
+  highlight's position in the PDF can't be represented in Karakeep. A
+  Karakeep search then also finds highlighted passages. This is v2 in
+  the build order.
+- **Read status:** Zotero → Karakeep. When the Zotero Reading List plugin
+  marks a paper Read, archive the bookmark in Karakeep and add a
+  read-date tag. This replaces the separate read-date CronJob idea.
 
 **Edge cases and intent.**
 
@@ -551,8 +590,9 @@ Each step is done when it's deployed **and** verified from a LAN device
    then create the API key for paperbridge.
 5. **paperbridge v0** (handoff). GitHub Actions builds the image on `v*`
    tags; the version lives only in `pyproject.toml`.
-6. **paperbridge v1** (read-status sync back; lists → collections came
-   early, in 0.2.0), then v2 (highlights).
+6. **paperbridge v1**: read status back, plus metadata and comments both
+   ways (lists → collections came early, in 0.2.0). Then v2: annotations
+   → Karakeep.
 
 ## Repo layout (target)
 
