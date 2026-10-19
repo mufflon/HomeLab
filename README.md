@@ -135,6 +135,36 @@ A paper that's already in Zotero (same DOI) is linked, not duplicated. If
 no translator recognises a page, paperbridge keeps trying for a day, then
 creates a minimal item tagged `needs-metadata` to fix by hand.
 
+### How to add a paper
+
+Step 1 above, by where you find the paper. Everything goes into Karakeep,
+tagged `paper`; paperbridge does the rest.
+
+| You find… | Do this | In Zotero you get |
+|---|---|---|
+| A paper page in the browser (arXiv, a journal, a DOI link) | Save it with Karakeep's browser extension; add the tag `paper` in its popup | The item with metadata, plus the PDF if it's on arXiv or open access |
+| Something on your phone | Share it to the Karakeep app and tag it `paper` (away from home: over the router's VPN) | Same as above |
+| A PDF you already have (a paywalled download, an email attachment, from a colleague) | Upload the file in Karakeep (drag it into the web page, or use the app) and tag it `paper` | A new item, or the PDF filled into an item that's already there without one |
+| Just a reference (a DOI or arXiv ID in a citation) | Paste `https://doi.org/<DOI>` into Karakeep's add box and tag it `paper` | The item with metadata, plus the PDF if one is freely available |
+| Many at once, from a script | Karakeep's API: `POST /api/v1/bookmarks` with `{"type": "link", "url": …}`, then `POST /api/v1/bookmarks/<id>/tags` with `{"tags": [{"tagName": "paper"}]}`. Use an API key of its own, not paperbridge's | As the rows above |
+
+**Paywalled papers take two steps:**
+1. **Save the page** as soon as you find it. Zotero gets the item with its
+   metadata right away, but no PDF.
+2. **Upload the PDF** to Karakeep once you've downloaded it. paperbridge
+   recognises the paper by DOI or title and attaches the PDF to the
+   existing item. Nothing gets duplicated.
+
+The paper then has two bookmarks in Karakeep, the page and the PDF. Both
+point to the same Zotero item, and marking it Read archives both.
+
+- **Tagging can be automatic.** A Karakeep rule (Settings → Rules) can add
+  `paper` when a URL contains `arxiv.org`, `doi.org` or a publisher you
+  use often.
+- **Zotero's own "Save to Zotero" button bypasses all of this.** Papers
+  saved that way stay in Zotero only, and Karakeep never sees them. Use it
+  only for things you want in Zotero alone.
+
 ## Design choices, and why
 
 - **LAN-only, with the router's VPN for remote access.**
