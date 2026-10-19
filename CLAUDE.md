@@ -894,6 +894,64 @@ both ways. Files and structure don't (see the rule at the top).
 - The bookmark's note gets `zotero://select/library/items/<KEY>` and the
   web-library link. `in-zotero` is tagged last.
 
+### Planned, not built: PDF folder importer
+
+Agreed with the owner on 2026-10-19 as a process. **Don't build it until
+the owner asks.**
+
+A local folder of PDFs feeds Karakeep, the entry point. It is one-way and
+additive, and it can be rerun any time: the owner downloads more papers
+gradually. paperbridge then takes over as for any paper.
+
+- **First source:** the owner's work repo `~/RACE`, gitignored folder
+  `literature/` (229 PDFs on 2026-10-19).
+  - Top level, plus `map/` and `cutting-edge/`.
+  - Catalogued in `digital_twin/docs/literature-map.csv` and
+    `literature-edge.csv`. Columns used: `downloaded` (path relative to
+    `literature/`), `doi`, `title`, `link`, `themes`, `relevance`,
+    `note`/`new`.
+  - 194 PDFs have a row with a DOI. 35 top-level files have none, e.g.
+    project deliverables and theses.
+  - DOI-only rows without a PDF are **out of scope**: many papers needed a
+    manual download, so a link isn't enough.
+- **Where:** a script in `scripts/`, run from the workstation. It is
+  generic: a root folder, optional CSVs and a list root. It uses its own
+  Karakeep API key, not paperbridge's.
+- **Identity, so nothing is ever added twice:**
+  - The ID is `doi:<DOI>` when the PDF's CSV row has one, otherwise
+    `sha256:<file hash>`.
+  - It is written into the bookmark's note as `import-id: …`.
+  - Each run reads Karakeep first. A file is skipped if an imported
+    bookmark carries the same ID, or if any bookmark already has the DOI
+    (e.g. one added as a link).
+  - It checks per file, right before upload, so interrupted or partial
+    runs simply continue next time.
+  - Renaming or moving a file changes nothing.
+- **Dry run by default.** It reports new / already present / without a
+  CSV row, and uploads only with `--apply`.
+- **Per new file:**
+  - upload the PDF as an asset bookmark (not a link), with `sourceUrl` set
+    to the DOI link and the CSV title;
+  - tags: `paper` plus the CSV's `themes`, each a tag (owner's choice);
+  - note: relevance, the CSV note and the `import-id` line.
+- **Lists per folder** (owner's choice), created if missing:
+  - `literature/` → `Papers/RACE`;
+  - `map/` → `Papers/RACE/map`;
+  - `cutting-edge/` → `Papers/RACE/cutting-edge`.
+
+  `Papers` is mirrored, so Zotero gets the same collections.
+- **Deliberately not done:**
+  - **Deletions:** a deleted file deletes nothing.
+  - **Moves after import:** organising then happens in Karakeep.
+  - **Replacing a PDF** whose ID is already imported. That would be a
+    later `--replace`.
+- **Known gap:** an uncatalogued paper saved twice as *different* files
+  (e.g. preprint and publisher PDF) gives two Karakeep bookmarks. Zotero
+  still gets one item, because paperbridge matches by DOI or title. A CSV
+  row with the DOI prevents it.
+- **Note:** `RACE/literature` is Glaze work material, some of it from paid
+  access. The owner chose to put copies on the personal server.
+
 ## Build order
 
 Each step is done when it's deployed **and** verified from a LAN device
