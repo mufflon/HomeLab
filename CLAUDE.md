@@ -35,7 +35,7 @@ service must authenticate on its own.
   `*.home.threadsafe.se` → LAN IP resolves (and the router passes it, so
   there's no DNS-rebind block), and `.env` has the step 1 values.
 - **Step 1: done.** Verified from a LAN machine on 2026-10-16, and over
-  the router VPN on 2026-10-20: the owner's phone, away from home, synced
+  the router VPN on 2026-10-20: the owner's phone, on the VPN, synced
   Zotero files through `https://zotero-dav.home.threadsafe.se`. So VPN
   clients resolve `*.home.threadsafe.se`, reach the server and trust the
   certificate.
