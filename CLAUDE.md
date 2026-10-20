@@ -34,8 +34,11 @@ service must authenticate on its own.
 - **Step 0, owner tasks: done.** The LoopiaAPI user exists, the A record
   `*.home.threadsafe.se` → LAN IP resolves (and the router passes it, so
   there's no DNS-rebind block), and `.env` has the step 1 values.
-- **Step 1: done**, verified from a LAN machine on 2026-10-16. Still to do:
-  one check over the router VPN (owner).
+- **Step 1: done.** Verified from a LAN machine on 2026-10-16, and over
+  the router VPN on 2026-10-20: the owner's phone, away from home, synced
+  Zotero files through `https://zotero-dav.home.threadsafe.se`. So VPN
+  clients resolve `*.home.threadsafe.se`, reach the server and trust the
+  certificate.
   - Traefik 3.6.13 is live on the server's ports 80/443.
   - lego got the production wildcard certificate (issuer `Let's Encrypt
     YE1`). Staging took about 1 minute and production about 5, mostly
@@ -1054,7 +1057,5 @@ it.
 
 ## Verify before relying on
 
-- VPN clients resolve `*.home.threadsafe.se` to the LAN IP and reach it.
-  The router itself was verified on 2026-10-16.
 - Meilisearch: stay on Karakeep's pinned v1.41.0, or verify a newer server
   with Karakeep's client first.
