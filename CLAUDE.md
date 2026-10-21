@@ -937,7 +937,8 @@ paperbridge then takes over as for any paper. One-way and additive, and
 rerunnable: the owner downloads papers gradually.
 
 - **Input:** a collection file, `imports/<name>.json`, one per folder of
-  papers. The script's docstring documents the format.
+  papers. **`imports/README.md` is its specification**, with a worked
+  one-paper example in `imports/example/`. Keep it in step with the code.
   - Paths in it are relative to the checkout holding the papers: its
     `root`, or `--root` on a machine where that checkout lives elsewhere.
   - It names the PDF folder, the list root, and how a PDF finds its

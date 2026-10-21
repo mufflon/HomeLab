@@ -1,0 +1,12 @@
+{
+  "pdfs": "pdfs",
+  "list": ["Papers", "Example"],
+  "default_group": "Unsorted",
+  "label": "the example collection",
+  "csv": {
+    "files": ["papers.csv"],
+    "columns": {"path": "file", "doi": "doi", "arxiv": "arxiv", "title": "title",
+                "themes": "themes", "note": ["note"]},
+    "group_by_theme": {"sequence-models": "Sequence models"}
+  }
+}

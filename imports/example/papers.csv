@@ -1,0 +1,2 @@
+file,doi,arxiv,title,themes,note
+vaswani-2017-attention.pdf,,1706.03762,Attention Is All You Need,sequence-models attention,Introduces the Transformer: sequence transduction built on attention alone.

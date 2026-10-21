@@ -27,3 +27,6 @@ build/
 .DS_Store
 .idea/
 .vscode/
+
+# PDFs of import collections stay on disk, never in git (imports/README.md)
+imports/**/*.pdf

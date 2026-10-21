@@ -1,46 +1,13 @@
 #!/usr/bin/env python3
 """Import a collection of local PDFs into Karakeep, the entry point; paperbridge carries them on
-to Zotero.
+to Zotero. The specification, with a worked example: imports/README.md.
 
-One-way and additive: nothing in Karakeep is ever deleted or moved by this script, and rerunning
-it only adds what isn't there yet, so a folder that grows can be imported again and again.
+A collection file (imports/<name>.json) names a folder of PDFs, the Karakeep list they go into,
+and optional CSV or markdown catalogues with each paper's DOI, title, themes and group. Its paths
+are relative to the checkout holding the papers (`root`, or --root on another machine).
 
-A collection is a JSON file describing one folder of papers (imports/*.json). Its paths are
-relative to the checkout holding the papers: `root` in the file, or --root on another machine.
-
-  {"root": "~/repo",                  checkout holding the papers (--root overrides)
-   "pdfs": "literature",              folder of PDFs, searched recursively
-   "list": ["Papers", "Repo"],        each PDF goes into list + [its group]
-   "default_group": "Other",
-   "label": "Repo literature",        notes end with "From <label>: <path in pdfs>"
-   "group_by_file": {"x.pdf": "Group"},             wins over everything below
-   "csv": {                           optional catalogue rows naming a PDF in the path column
-     "files": ["docs/papers.csv"],
-     "columns": {"path": "downloaded", "doi": "doi", "arxiv": "arxiv", "title": "title",
-                 "themes": "themes", "relevance": "relevance", "horizon": "horizon",
-                 "note": ["note", "new"], "facts": ["edge"]},
-     "group_by_theme": {"some-theme": "Group"},     by the first theme
-     "horizon_tags": {"short": "now", "long": "long-term"},   in order of precedence
-     "relevance_tag_from": 3},        relevance >= 3 gets the tag relevance-3
-   "markdown": {                      optional reference list naming PDFs by file name, for PDFs
-     "file": "docs/references.md",    without a CSV row; the `## ` heading above is the section
-     "group_by_section": {"Section": "Group"},
-     "role_cell": 1,                  table cell quoted in the note
-     "note": "Cited in the references", "tags": ["paper", "cited"]}}
-
-Rows of one PDF merge: all themes become tags (plus `paper`), the highest relevance and the
-first-listed horizon win, the first DOI, arXiv ID and title count. A PDF in neither list goes
-into default_group with only `paper`; paperbridge then looks its metadata up from the PDF.
-
-A PDF counts as already in Karakeep when any bookmark has
-
-  1. its import ID in the note (`import-id: doi:…`, `arxiv:…` or `sha256:…`),
-  2. its DOI or arXiv ID in its URL or source URL,
-  3. an asset with the same file name, or
-  4. the same title (20+ characters, normalized).
-
-A bookmark this script created but didn't finish (no `paper` tag yet) is completed instead. More
-than one bookmark with the same import ID is reported, never touched.
+One-way and additive: nothing in Karakeep is ever deleted or moved, and a rerun uploads only the
+PDFs Karakeep doesn't have yet (by import ID, DOI or arXiv ID, file name, or title).
 
 Dry run by default. Usage:
   scripts/import_pdfs.py imports/race.json                       # report only
@@ -166,7 +133,7 @@ def from_rows(rows: list[dict], spec: dict, default_group: str) -> dict:
               ([f"horizon {horizon}"] if horizon else []) + facts
     return {
         "group": spec.get("group_by_theme", {}).get(themes[0], default_group) if themes else default_group,
-        "doi": first("doi"), "arxiv": first("arxiv"), "title": first("title"), "tags": tags,
+        "doi": first("doi"), "arxiv": arxiv_id(first("arxiv")), "title": first("title"), "tags": tags,
         "note_lines": [n for n in dict.fromkeys(notes) if n] + ([" · ".join(summary)] if summary else []),
     }
 
@@ -186,7 +153,8 @@ def from_markdown(root: str, spec: dict, wanted: set[str]) -> dict[str, dict]:
                 cells = [c.strip() for c in line.strip().strip("|").split("|")]
                 cell = spec.get("role_cell")
                 role = cells[cell] if cell is not None and len(cells) > cell else ""
-                role = re.sub(r"[`*\[\]]", "", role).split("](")[0].strip()
+                role = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", role)  # [text](url) -> text
+                role = re.sub(r"[`*]", "", role).strip()
                 doi, arxiv = DOI_LINK.search(line), ARXIV_LINK.search(line)
                 found[path] = {
                     "group": group, "section": section,
@@ -431,7 +399,8 @@ def main() -> None:
     index, lists = Index(kk.bookmarks()), kk.lists()
     seen_hashes: dict[str, str] = {}
     counts = {"new": 0, "present": 0, "completed": 0, "same file twice": 0, "extra bookmarks": 0}
-    imported = 0
+    imported = planned = 0
+    todo: list[dict] = []  # entries this run imports or finishes: their lists may need creating
     stopped = ""
 
     try:
@@ -452,6 +421,7 @@ def main() -> None:
                 keep = finished[0] if finished else found[-1]  # newest first: [-1] is the oldest
                 if why == "import-id" and not finished:
                     counts["completed"] += 1
+                    todo.append(e)
                     print(f"  {'finish' if args.apply else 'would finish'}  {name} (created earlier, not finished)")
                     if args.apply:
                         finish(kk, lists, keep, e)
@@ -464,9 +434,11 @@ def main() -> None:
                 continue
 
             counts["new"] += 1
-            if not args.apply:
+            if args.limit and planned >= args.limit:
                 continue
-            if args.limit and imported >= args.limit:
+            planned += 1
+            todo.append(e)
+            if not args.apply:
                 continue
             asset = kk.upload(path)
             body = {"type": "asset", "assetType": "pdf", "assetId": asset["assetId"], "fileName": name,
@@ -484,7 +456,7 @@ def main() -> None:
         stopped = str(err)
 
     mode = "imported" if args.apply else "would import"
-    print(f"\n{len(entries)} PDFs: {counts['new']} new ({mode} {imported if args.apply else counts['new']}), "
+    print(f"\n{len(entries)} PDFs: {counts['new']} new ({mode} {imported if args.apply else planned}), "
           f"{counts['present']} already in Karakeep, {counts['completed']} to finish, "
           f"{counts['same file twice']} identical duplicates on disk, "
           f"{counts['extra bookmarks']} extra bookmarks in Karakeep")
@@ -492,7 +464,7 @@ def main() -> None:
         hint = " (401 on every try: check the API key)" if "HTTP 401" in stopped else ""
         raise SystemExit(f"stopped: {stopped}{hint}\nRerun to continue: a half-done PDF is finished, not added again.")
     if not args.apply:
-        missing = sorted({"/".join(e["list"][:i + 1]) for e in entries for i in range(len(e["list"]))
+        missing = sorted({"/".join(e["list"][:i + 1]) for e in todo for i in range(len(e["list"]))
                           if ensure_list(kk, lists, e["list"][:i + 1], False) is None})
         if missing:
             print("lists to create:", ", ".join(missing))
