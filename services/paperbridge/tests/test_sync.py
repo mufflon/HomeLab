@@ -206,6 +206,41 @@ def test_an_edit_on_either_side_crosses_over(world):
     quiet()
 
 
+def test_an_emptied_value_never_overwrites_the_other_side(world):
+    # Karakeep blanks a PDF bookmark's title while it (re)processes the file: that's not an edit.
+    # (A link bookmark falls back to its crawled page title instead, so use a PDF bookmark.)
+    kk, z, run, quiet = world
+    kk.bookmarks["bm1"] = {"id": "bm1", "title": None, "note": LINKS, "archived": False,
+                           "tags": [], "content": {"type": "asset", "assetType": "pdf"}}
+    run()
+    bm(kk)["title"] = ""
+    run()
+    assert z.items["ITEM0001"]["title"] == "Attention Is All You Need"
+    assert bm(kk)["title"] == "Attention Is All You Need"  # restored from Zotero
+    quiet()
+    # The same the other way round.
+    z.items["ITEM0001"]["title"] = ""
+    run()
+    assert bm(kk)["title"] == "Attention Is All You Need"
+    assert z.items["ITEM0001"]["title"] == "Attention Is All You Need"
+    quiet()
+
+
+def test_a_value_filling_a_blank_crosses_over(world):
+    # An item whose title was blanked earlier gets it back once Karakeep has one again.
+    kk, z, run, quiet = world
+    kk.bookmarks["bm1"] = {"id": "bm1", "title": None, "note": LINKS, "archived": False,
+                           "tags": [], "content": {"type": "asset", "assetType": "pdf"}}
+    run()
+    z.items["ITEM0001"]["title"] = ""
+    bm(kk)["title"] = ""
+    run()
+    bm(kk)["title"] = "Attention Is All You Need"
+    run()
+    assert z.items["ITEM0001"]["title"] == "Attention Is All You Need"
+    quiet()
+
+
 def test_both_changed_zotero_wins_for_metadata(world):
     kk, z, run, quiet = world
     run()

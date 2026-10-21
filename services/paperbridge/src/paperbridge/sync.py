@@ -247,13 +247,24 @@ FIELDS = (
 
 
 def decide(z: str, k: str, snap: dict | None, same: Callable[[str, str], bool]) -> str | None:
-    """Which side's value wins: "z", "k", or None for nothing to do. See the module docstring."""
+    """Which side's value wins: "z", "k", or None for nothing to do. See the module docstring.
+
+    An empty value is missing data, never an edit: it never overwrites a value on the other side.
+    Karakeep blanks a PDF bookmark's title while (re)processing its file; without this rule that
+    blank was synced over the Zotero title (2026-10-21).
+    """
     if snap is None:
         return None if same(z, k) else "z" if z else "k" if k else None
     z_changed, k_changed = z != snap["z"], k != snap["k"]
     if z_changed and k_changed:
-        return None if same(z, k) else "z"
-    return "z" if z_changed else "k" if k_changed else None
+        winner = None if same(z, k) else "z"
+    else:
+        winner = "z" if z_changed else "k" if k_changed else None
+    if winner == "k" and not k.strip() and z.strip():
+        return "z"
+    if winner == "z" and not z.strip() and k.strip():
+        return "k"
+    return winner
 
 
 # --- state ---------------------------------------------------------------------------------------
