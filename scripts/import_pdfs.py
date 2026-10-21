@@ -90,7 +90,8 @@ class Karakeep:
         """Retry transient failures only where repeating is harmless: GET and PUT by default.
 
         A POST that fails this way raises Unreachable, because it may have taken effect anyway:
-        blindly repeating POST /bookmarks while Karakeep restarted created a duplicate (2026-10-21).
+        blindly repeating POST /bookmarks while Karakeep restarted created a duplicate, and a 500
+        "database is locked" came after the bookmark was stored (2026-10-21).
         401 and 429 are retried for any method: the request was turned away before it ran. Karakeep
         answers 401 whenever its API-key lookup throws, a passing database error included (a bare
         `catch` in createContextFromRequest, v0.33.2); that stopped an import once (2026-10-21).
@@ -112,7 +113,7 @@ class Karakeep:
             except urllib.error.HTTPError as e:
                 if e.code in (401, 429):
                     err, safe = f"HTTP {e.code}", True
-                elif e.code in (502, 503, 504):
+                elif e.code in (500, 502, 503, 504):
                     err, safe = f"HTTP {e.code}", retry
                 else:
                     raise SystemExit(f"{method} {path}: HTTP {e.code} {e.read()[:300]!r}")
