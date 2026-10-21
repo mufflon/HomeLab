@@ -1,0 +1,57 @@
+{
+  "root": "~/RACE",
+  "pdfs": "literature",
+  "list": ["Papers", "RACE"],
+  "default_group": "Digital twin, GIS & planning",
+  "label": "RACE literature",
+  "group_by_file": {
+    "saelens-2020-destest-ibpsa.pdf": "Transport & pipe models",
+    "boussaid-2025-kdd-tgl-workshop-inertial-networks.pdf": "Network reduction & surrogates",
+    "vandreven-2026-exsy-federated-fault-detection.pdf": "Low temperature, faults & operation",
+    "aau-2026-race-maalekampagne-d5.pdf": "Low temperature, faults & operation"
+  },
+  "csv": {
+    "files": ["digital_twin/docs/literature-map.csv", "digital_twin/docs/literature-edge.csv"],
+    "columns": {
+      "path": "downloaded", "doi": "doi", "arxiv": "arxiv", "title": "title", "themes": "themes",
+      "relevance": "relevance", "horizon": "horizon", "note": ["note", "new"], "facts": ["edge"]
+    },
+    "group_by_theme": {
+      "transport-model": "Transport & pipe models",
+      "hydraulics-solver": "Hydraulics & network solvers",
+      "water-distribution": "Hydraulics & network solvers",
+      "network-reduction": "Network reduction & surrogates",
+      "machine-learning-surrogate": "Network reduction & surrogates",
+      "calibration": "Calibration, state & data",
+      "state-estimation": "Calibration, state & data",
+      "data-quality": "Calibration, state & data",
+      "uncertainty": "Calibration, state & data",
+      "control-mpc": "Control & MPC",
+      "dispatch-integrated-energy": "Dispatch & integrated energy",
+      "substation-demand": "Demand, substations & forecasting",
+      "forecasting": "Demand, substations & forecasting",
+      "low-temp-bypass": "Low temperature, faults & operation",
+      "fault-degradation": "Low temperature, faults & operation",
+      "gis-digital-twin": "Digital twin, GIS & planning",
+      "planning-design": "Digital twin, GIS & planning",
+      "other": "Digital twin, GIS & planning"
+    },
+    "horizon_tags": {"short": "now", "long": "long-term"},
+    "relevance_tag_from": 3
+  },
+  "markdown": {
+    "file": "digital_twin/docs/references.md",
+    "group_by_section": {
+      "Pipe models, validation and transport": "Transport & pipe models",
+      "Network structure and reduction": "Network reduction & surrogates",
+      "Calibration, delays and state": "Calibration, state & data",
+      "Optimisation and control": "Control & MPC",
+      "Insulation, distributed feed-in and practice": "Low temperature, faults & operation",
+      "Flexibility, capacity and reliability": "Low temperature, faults & operation",
+      "Project reports and commercial products": "Digital twin, GIS & planning"
+    },
+    "role_cell": 1,
+    "note": "Cited in the digital twin's references",
+    "tags": ["paper", "cited"]
+  }
+}

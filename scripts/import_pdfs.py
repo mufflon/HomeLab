@@ -1,12 +1,36 @@
 #!/usr/bin/env python3
-"""Import local PDFs into Karakeep, the entry point; paperbridge carries them on to Zotero.
+"""Import a collection of local PDFs into Karakeep, the entry point; paperbridge carries them on
+to Zotero.
 
 One-way and additive: nothing in Karakeep is ever deleted or moved by this script, and rerunning
-it only adds what isn't there yet. The input is a manifest (JSON list), one entry per PDF:
+it only adds what isn't there yet, so a folder that grows can be imported again and again.
 
-  {"path": "/abs/file.pdf", "doi": "...", "arxiv": "...", "title": "...",
-   "source_url": "https://doi.org/..." | null, "list": ["Papers", "Topic"],
-   "tags": ["paper", ...], "note": "..."}
+A collection is a JSON file describing one folder of papers (imports/*.json). Its paths are
+relative to the checkout holding the papers: `root` in the file, or --root on another machine.
+
+  {"root": "~/repo",                  checkout holding the papers (--root overrides)
+   "pdfs": "literature",              folder of PDFs, searched recursively
+   "list": ["Papers", "Repo"],        each PDF goes into list + [its group]
+   "default_group": "Other",
+   "label": "Repo literature",        notes end with "From <label>: <path in pdfs>"
+   "group_by_file": {"x.pdf": "Group"},             wins over everything below
+   "csv": {                           optional catalogue rows naming a PDF in the path column
+     "files": ["docs/papers.csv"],
+     "columns": {"path": "downloaded", "doi": "doi", "arxiv": "arxiv", "title": "title",
+                 "themes": "themes", "relevance": "relevance", "horizon": "horizon",
+                 "note": ["note", "new"], "facts": ["edge"]},
+     "group_by_theme": {"some-theme": "Group"},     by the first theme
+     "horizon_tags": {"short": "now", "long": "long-term"},   in order of precedence
+     "relevance_tag_from": 3},        relevance >= 3 gets the tag relevance-3
+   "markdown": {                      optional reference list naming PDFs by file name, for PDFs
+     "file": "docs/references.md",    without a CSV row; the `## ` heading above is the section
+     "group_by_section": {"Section": "Group"},
+     "role_cell": 1,                  table cell quoted in the note
+     "note": "Cited in the references", "tags": ["paper", "cited"]}}
+
+Rows of one PDF merge: all themes become tags (plus `paper`), the highest relevance and the
+first-listed horizon win, the first DOI, arXiv ID and title count. A PDF in neither list goes
+into default_group with only `paper`; paperbridge then looks its metadata up from the PDF.
 
 A PDF counts as already in Karakeep when any bookmark has
 
@@ -19,15 +43,17 @@ A bookmark this script created but didn't finish (no `paper` tag yet) is complet
 than one bookmark with the same import ID is reported, never touched.
 
 Dry run by default. Usage:
-  scripts/import_pdfs.py MANIFEST.json                 # report only
-  scripts/import_pdfs.py MANIFEST.json --apply --limit 50
+  scripts/import_pdfs.py imports/race.json                       # report only
+  scripts/import_pdfs.py imports/race.json --apply --limit 25
+  scripts/import_pdfs.py imports/race.json --root /elsewhere/RACE
 
-Karakeep: KARAKEEP_PUBLIC_URL-style base URL in --url (default the homelab's), API key from .env
-(KARAKEEP_IMPORT_API_KEY, else KARAKEEP_API_KEY).
+Karakeep: its API base URL in --url (default the homelab's); the API key from the environment or
+.env (KARAKEEP_IMPORT_API_KEY, else KARAKEEP_API_KEY).
 """
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import mimetypes
@@ -48,6 +74,9 @@ LIST_ICON = "📚"
 
 
 def env_value(key: str) -> str:
+    """From the environment, else from the repo's .env."""
+    if os.environ.get(key):
+        return os.environ[key]
     try:
         with open(os.path.join(REPO, ".env")) as f:
             for line in f:
@@ -64,7 +93,7 @@ def norm_title(title: str) -> str:
 
 
 def arxiv_id(value: str) -> str:
-    """The bare arXiv ID from an ID, `arXiv:…` or an arxiv.org link (manifests have all three)."""
+    """The bare arXiv ID from an ID, `arXiv:…` or an arxiv.org link (catalogues have all three)."""
     v = re.sub(r"^\s*(https?://(www\.)?arxiv\.org/(abs|pdf)/|arxiv:)", "", value, flags=re.I).strip()
     return re.sub(r"\.pdf$", "", v)
 
@@ -75,6 +104,141 @@ def sha256(path: str) -> str:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+DOI_LINK = re.compile(r"https?://(?:dx\.)?doi\.org/(10\.\S+)", re.I)
+ARXIV_LINK = re.compile(r"arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5})", re.I)
+
+
+def clean_doi(raw: str) -> str:
+    """A DOI cut from a markdown link: drop the link's closing ')' and trailing punctuation,
+    keeping parentheses that belong to the DOI, e.g. 10.1061/(ASCE)WR.1943-5452.0000351."""
+    doi = raw.split("|")[0].strip().rstrip(".,;")
+    while doi.endswith(")") and doi.count(")") > doi.count("("):
+        doi = doi[:-1]
+    return doi
+
+
+def pdfs_under(root: str) -> list[str]:
+    out = []
+    for dirpath, _, files in os.walk(root):
+        out += [os.path.relpath(os.path.join(dirpath, f), root) for f in files if f.lower().endswith(".pdf")]
+    return sorted(out)
+
+
+def csv_rows(root: str, spec: dict) -> dict[str, list[dict]]:
+    """Catalogue rows by the PDF they name (path relative to the PDF folder)."""
+    path_col = spec["columns"]["path"]
+    rows: dict[str, list[dict]] = {}
+    for name in spec["files"]:
+        with open(os.path.join(root, name), newline="") as f:
+            for row in csv.DictReader(f):
+                path = (row.get(path_col) or "").strip()
+                if path:
+                    rows.setdefault(path, []).append(row)
+    return rows
+
+
+def from_rows(rows: list[dict], spec: dict, default_group: str) -> dict:
+    col = spec["columns"]
+
+    def first(field: str) -> str:
+        c = col.get(field)
+        return next((r[c].strip() for r in rows if c and (r.get(c) or "").strip()), "")
+
+    themes: list[str] = []
+    for row in rows:
+        for t in re.split(r"[\s,;]+", row.get(col.get("themes", ""), "") or ""):
+            if t and t not in themes:
+                themes.append(t)
+    relevance = max((int(r.get(col["relevance"]) or 0) for r in rows), default=0) if "relevance" in col else None
+    horizons = {r.get(col.get("horizon", "")) for r in rows}
+    horizon_tags = spec.get("horizon_tags", {})
+    horizon = next((h for h in horizon_tags if h in horizons), "")
+    notes = [next((r.get(c) for c in col.get("note", []) if r.get(c)), "").strip() for r in rows]
+    facts = [v for c in col.get("facts", []) for v in sorted({r.get(c) for r in rows if r.get(c)})]
+
+    tags = ["paper", *themes] + ([horizon_tags[horizon]] if horizon else [])
+    floor = spec.get("relevance_tag_from")
+    if floor is not None and relevance is not None and relevance >= floor:
+        tags.append(f"relevance-{floor}")
+    summary = ([f"Relevance {relevance}"] if relevance is not None else []) + \
+              ([f"horizon {horizon}"] if horizon else []) + facts
+    return {
+        "group": spec.get("group_by_theme", {}).get(themes[0], default_group) if themes else default_group,
+        "doi": first("doi"), "arxiv": first("arxiv"), "title": first("title"), "tags": tags,
+        "note_lines": [n for n in dict.fromkeys(notes) if n] + ([" · ".join(summary)] if summary else []),
+    }
+
+
+def from_markdown(root: str, spec: dict, wanted: set[str]) -> dict[str, dict]:
+    """Entries for the wanted PDFs that a markdown reference list names by file name."""
+    found, section = {}, ""
+    with open(os.path.join(root, spec["file"])) as f:
+        for line in f:
+            if line.startswith("## "):
+                section = line[3:].strip()
+                continue
+            for path in wanted:
+                if path in found or os.path.basename(path) not in line:
+                    continue
+                group = spec.get("group_by_section", {}).get(section)
+                cells = [c.strip() for c in line.strip().strip("|").split("|")]
+                cell = spec.get("role_cell")
+                role = cells[cell] if cell is not None and len(cells) > cell else ""
+                role = re.sub(r"[`*\[\]]", "", role).split("](")[0].strip()
+                doi, arxiv = DOI_LINK.search(line), ARXIV_LINK.search(line)
+                found[path] = {
+                    "group": group, "section": section,
+                    "doi": clean_doi(doi.group(1)) if doi else "", "arxiv": arxiv.group(1) if arxiv else "",
+                    "title": "", "tags": spec.get("tags", ["paper"]),
+                    "note_lines": [f"{spec.get('note', 'Cited')} ({section})" + (f": {role}" if role else "")],
+                }
+    return found
+
+
+def load_collection(config_path: str, root: str | None) -> list[dict]:
+    """The PDFs a collection file describes, one import entry each (see the module docstring)."""
+    with open(config_path) as f:
+        cfg = json.load(f)
+    root = os.path.expanduser(root or cfg.get("root") or os.path.dirname(os.path.abspath(config_path)))
+    folder = os.path.join(root, cfg["pdfs"])
+    if not os.path.isdir(folder):
+        raise SystemExit(f"no PDF folder at {folder} (set --root to the checkout holding it)")
+    default = cfg["default_group"]
+    label = cfg.get("label") or os.path.basename(cfg["pdfs"].rstrip("/"))
+    by_file = cfg.get("group_by_file", {})
+
+    pdfs = pdfs_under(folder)
+    rows = csv_rows(root, cfg["csv"]) if cfg.get("csv") else {}
+    rest = {p for p in pdfs if p not in rows}
+    refs = from_markdown(root, cfg["markdown"], rest) if cfg.get("markdown") else {}
+    missing = sorted(rest - set(refs))
+    if missing:
+        print(f"note: {len(missing)} PDF(s) in no catalogue, into {default!r}: {missing}", file=sys.stderr)
+
+    entries = []
+    for path in pdfs:
+        if path in rows:
+            e = from_rows(rows[path], cfg["csv"], default)
+        elif path in refs:
+            e = refs[path]
+            if not (by_file.get(os.path.basename(path)) or e["group"]):
+                raise SystemExit(f"no group for {path} (section {e['section']!r}): add it to group_by_file "
+                                 "or group_by_section")
+        else:
+            e = {"group": default, "doi": "", "arxiv": "", "title": "", "tags": ["paper"], "note_lines": []}
+        group = by_file.get(os.path.basename(path)) or e["group"]
+        entries.append({
+            "path": os.path.join(folder, path),
+            "doi": e["doi"], "arxiv": e["arxiv"], "title": e["title"],
+            "source_url": (f"https://doi.org/{e['doi']}" if e["doi"]
+                           else f"https://arxiv.org/abs/{e['arxiv']}" if e["arxiv"] else None),
+            "list": cfg["list"] + [group],
+            "tags": e["tags"],
+            "note": "\n".join(e["note_lines"] + [f"From {label}: {path}"]),
+        })
+    return entries
 
 
 class Unreachable(Exception):
@@ -250,7 +414,8 @@ def finish(kk: Karakeep, lists: list[dict], b: dict, e: dict) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("manifest")
+    ap.add_argument("collection", help="a collection file, e.g. imports/race.json")
+    ap.add_argument("--root", help="the checkout holding the papers, if not the file's `root`")
     ap.add_argument("--apply", action="store_true", help="upload; without it, only report")
     ap.add_argument("--limit", type=int, default=0, help="import at most N new PDFs this run")
     ap.add_argument("--url", default=DEFAULT_URL)
@@ -258,10 +423,9 @@ def main() -> None:
 
     key = env_value("KARAKEEP_IMPORT_API_KEY") or env_value("KARAKEEP_API_KEY")
     if not key:
-        raise SystemExit("no Karakeep API key in .env (KARAKEEP_IMPORT_API_KEY or KARAKEEP_API_KEY)")
+        raise SystemExit("no Karakeep API key (KARAKEEP_IMPORT_API_KEY or KARAKEEP_API_KEY, environment or .env)")
+    entries = load_collection(args.collection, args.root)
     kk = Karakeep(args.url, key)
-    with open(args.manifest) as f:
-        manifest = json.load(f)
 
     print("reading Karakeep ...")
     index, lists = Index(kk.bookmarks()), kk.lists()
@@ -271,7 +435,7 @@ def main() -> None:
     stopped = ""
 
     try:
-        for e in manifest:
+        for e in entries:
             path, name = e["path"], os.path.basename(e["path"])
             digest = sha256(path)
             if digest in seen_hashes:
@@ -320,7 +484,7 @@ def main() -> None:
         stopped = str(err)
 
     mode = "imported" if args.apply else "would import"
-    print(f"\n{len(manifest)} PDFs: {counts['new']} new ({mode} {imported if args.apply else counts['new']}), "
+    print(f"\n{len(entries)} PDFs: {counts['new']} new ({mode} {imported if args.apply else counts['new']}), "
           f"{counts['present']} already in Karakeep, {counts['completed']} to finish, "
           f"{counts['same file twice']} identical duplicates on disk, "
           f"{counts['extra bookmarks']} extra bookmarks in Karakeep")
@@ -328,7 +492,7 @@ def main() -> None:
         hint = " (401 on every try: check the API key)" if "HTTP 401" in stopped else ""
         raise SystemExit(f"stopped: {stopped}{hint}\nRerun to continue: a half-done PDF is finished, not added again.")
     if not args.apply:
-        missing = sorted({"/".join(e["list"][:i + 1]) for e in manifest for i in range(len(e["list"]))
+        missing = sorted({"/".join(e["list"][:i + 1]) for e in entries for i in range(len(e["list"]))
                           if ensure_list(kk, lists, e["list"][:i + 1], False) is None})
         if missing:
             print("lists to create:", ", ".join(missing))

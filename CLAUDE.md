@@ -936,9 +936,17 @@ both ways. Files and structure don't (see the rule at the top).
 paperbridge then takes over as for any paper. One-way and additive, and
 rerunnable: the owner downloads papers gradually.
 
-- **Input:** a JSON manifest, one entry per PDF: path, DOI or arXiv ID,
-  title, source URL, list path, tags, note. Any source can produce one; a
-  source-specific builder stays out of this repo.
+- **Input:** a collection file, `imports/<name>.json`, one per folder of
+  papers. The script's docstring documents the format.
+  - Paths in it are relative to the checkout holding the papers: its
+    `root`, or `--root` on a machine where that checkout lives elsewhere.
+  - It names the PDF folder, the list root, and how a PDF finds its
+    group: by file name, by the first theme of its CSV catalogue rows, or
+    by its section in a markdown reference list.
+  - With no catalogue at all, every PDF goes into `default_group`, tagged
+    `paper`.
+  - `imports/race.json` is the first. Nothing is written into the source
+    repo: it is only read.
 - Only PDFs: a paper that needed a manual download can't be a link.
 - **Identity, so nothing is ever added twice:**
   - The ID is `doi:<DOI>`, else `arxiv:<ID>`, else `sha256:<file hash>`,
