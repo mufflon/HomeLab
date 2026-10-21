@@ -32,7 +32,7 @@ spec:
           containers:
             - name: paperbridge
               # Built by .github/workflows/paperbridge.yml from services/paperbridge on a v* tag.
-              image: ghcr.io/mufflon/paperbridge:0.4.3@sha256:f489861b06ff10e509061819ca9ccd528c90149412145de59baf791433ec9284
+              image: ghcr.io/mufflon/paperbridge:0.4.4@sha256:c741372a01362ab42a348889e5d358c740f75a44183a3d109d6ebc57f6d30516
               envFrom:
                 - configMapRef:
                     name: paperbridge
