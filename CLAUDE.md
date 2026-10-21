@@ -287,10 +287,10 @@ service must authenticate on its own.
     down, then resumed.
 - **PDF importer: built and used** (2026-10-21). 343 PDFs went into
   Karakeep, one list per paper under `Papers/`, and on to Zotero.
-  - Verified afterwards: every PDF has exactly one bookmark (except one
-    leftover from the blind-retry bug, untagged and in no list), list
-    counts match the manifest, Karakeep and Zotero titles all agree, no
-    empty titles.
+  - Verified afterwards: every PDF has exactly one bookmark, list counts
+    match the manifest, Karakeep and Zotero titles all agree, no empty
+    titles. One duplicate from the blind-retry bug was deleted with the
+    owner's OK.
   - Bookmarks without a DOI or arXiv ID wait 24 h for metadata, then
     become minimal `needs-metadata` items.
   - Along the way: paperbridge 0.4.2–0.4.4 and Karakeep at 8Gi. The run
