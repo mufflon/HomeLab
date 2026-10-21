@@ -8,6 +8,7 @@ from datetime import datetime
 import httpx
 import pytest
 
+from paperbridge.clients import Rejected
 from paperbridge.config import Config
 from paperbridge.handoff import Handoff, tag_names
 
@@ -64,12 +65,21 @@ class FakeKarakeep:
         return ["bm1"]
 
 
+# Zotero's schema, as much of it as the tests use (GET /itemTypeCreatorTypes).
+CREATOR_TYPES = {"thesis": {"author", "contributor"}}
+ALL_CREATOR_TYPES = {"author", "contributor", "editor", "reviewedAuthor", "translator"}
+
+
 class FakeZotero:
     def __init__(self):
         self.items = {}
         self.writes = []
         self.scans = 0
         self.collections_ = {}
+        self.refuse = set()  # item types to refuse, as Zotero refuses an invalid item
+
+    def creator_types(self, item_type):
+        return CREATOR_TYPES.get(item_type, ALL_CREATOR_TYPES)
 
     def key_info(self):
         return {"userID": 1, "username": "owner", "access": {"user": {"library": True, "write": True}}}
@@ -90,6 +100,17 @@ class FakeZotero:
             self.collections_.update({o["key"]: {**o, "version": 1} for o in objects})
             return
         self.writes.append(("create", [o["itemType"] for o in objects]))
+        # Like Zotero: invalid objects are refused, and so are children of a refused parent.
+        failed, refused = {}, set()
+        for i, o in enumerate(objects):
+            bad = [c["creatorType"] for c in o.get("creators", [])
+                   if c["creatorType"] not in self.creator_types(o["itemType"])]
+            if bad or o["itemType"] in self.refuse:
+                failed[str(i)] = {"code": 400, "message": f"invalid: {bad or o['itemType']}"}
+                refused.add(o.get("key"))
+            elif o.get("parentItem") in refused:
+                failed[str(i)] = {"code": 409, "message": f"Parent item {o['parentItem']} not found"}
+        objects = [o for i, o in enumerate(objects) if str(i) not in failed]
         stored = []
         for o in objects:
             # Like Zotero: a client-chosen key needs version 0 (or If-Unmodified-Since-Version).
@@ -97,6 +118,8 @@ class FakeZotero:
             key = o.get("key") or f"SRV{len(self.items):05d}"  # the server assigns missing keys
             self.items[key] = {**o, "key": key, "version": 1}
             stored.append(dict(self.items[key]))
+        if failed:
+            raise Rejected("items", failed)
         return stored
 
     def update(self, path, version, fields):
@@ -113,6 +136,9 @@ class FakeWebDAV:
 
     def put(self, name, data, content_type):
         self.files[name] = data
+
+    def delete(self, name):
+        self.files.pop(name, None)
 
 
 class FakeTS:
@@ -344,3 +370,27 @@ def test_short_titles_are_not_matched(world):
     handoff.ts = FakeTS({})
     handoff.run()
     assert len([i for i in zotero.items.values() if "parentItem" not in i]) == 2  # a new, minimal item
+
+
+def test_a_creator_type_the_item_type_does_not_allow_becomes_contributor(world):
+    handoff, karakeep, zotero, dav = world
+    thesis = {"itemType": "thesis", "title": "Demand modeling for water networks", "date": "2016",
+              "creators": [{"firstName": "G.", "lastName": "Student", "creatorType": "author"},
+                           {"firstName": "P.", "lastName": "Supervisor", "creatorType": "editor"}]}
+    handoff.ts.answers = {"arXiv:1706.03762": [thesis]}
+    assert handoff.run() == 0
+    [parent] = [i for i in zotero.items.values() if i["itemType"] == "thesis"]
+    assert [c["creatorType"] for c in parent["creators"]] == ["author", "contributor"]
+
+
+def test_a_refused_item_leaves_no_files_on_webdav(world):
+    handoff, karakeep, zotero, dav = world
+    zotero.refuse = {"preprint"}
+    assert handoff.run() == 1  # failed: the next run retries it
+    assert zotero.items == {} and dav.files == {}
+    assert "in-zotero" not in {x["name"] for x in karakeep.bookmarks["bm1"]["tags"]}
+
+    zotero.refuse = set()
+    assert handoff.run() == 0
+    [att] = [i for i in zotero.items.values() if i["itemType"] == "attachment"]
+    assert set(dav.files) == {f"{att['key']}.zip", f"{att['key']}.prop"}

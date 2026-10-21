@@ -18,7 +18,7 @@ from datetime import datetime
 
 import httpx
 
-from .clients import Karakeep, TranslationServer, WebDAV, Zotero
+from .clients import Karakeep, Rejected, TranslationServer, WebDAV, Zotero
 from .config import Config
 from .files import PDF, attachment_filename, find_pdf, md5, prop_for_webdav, zip_for_webdav
 from .mirror import Mirror
@@ -198,6 +198,7 @@ class Handoff:
                 if found is None:
                     return
                 item, notes = found
+                item = self._valid_creators(item)
                 # version 0: "new" to Zotero's API, which requires it with a client-chosen key.
                 parent = {
                     **item,
@@ -220,8 +221,10 @@ class Handoff:
         if new:
             try:
                 created = self._write(f"create {len(new)} Zotero object(s)", self.zotero.create, new)
-            except Exception:
+            except Exception as e:
                 self.library = None  # some objects may exist now: read the library again
+                if isinstance(e, Rejected):
+                    self._forget_files(new, e.failed)
                 raise
             if new[0] is parent:  # a new parent: later bookmarks in this run must see it
                 self.library.append(created[0] if created else parent)
@@ -232,6 +235,38 @@ class Handoff:
             self.library = self.zotero.top_items()
             log.info("Zotero library: %d top-level items", len(self.library))
         return self.library
+
+    def _valid_creators(self, item: dict) -> dict:
+        """Creators whose type Zotero's schema doesn't allow for the item type become contributors,
+        which every item type allows. Metadata sources don't always follow the schema: a thesis's
+        DOI metadata listed its supervisor as an editor, and Zotero refused the item on every run
+        (2026-10-21)."""
+        creators = item.get("creators") or []
+        if not creators:
+            return item
+        allowed = self.zotero.creator_types(item["itemType"])
+        fixed = []
+        for c in creators:
+            if c.get("creatorType") not in allowed:
+                name = c.get("lastName") or c.get("name")
+                log.info("creator %s: %r isn't allowed for a %s; contributor", name, c.get("creatorType"),
+                         item["itemType"])
+                c = {**c, "creatorType": "contributor"}
+            fixed.append(c)
+        return {**item, "creators": fixed}
+
+    def _forget_files(self, objects: list[dict], failed: dict) -> None:
+        """Delete the WebDAV files of attachments Zotero refused: no item will ever point to them,
+        and the next run stores the PDF again under a new key. Only after a refusal: after other
+        errors the attachment may exist."""
+        for i, obj in enumerate(objects):
+            if obj.get("itemType") != "attachment" or str(i) not in failed:
+                continue
+            for name in (f"{obj['key']}.zip", f"{obj['key']}.prop"):
+                try:
+                    self._write(f"DELETE {name}", self.webdav.delete, name)
+                except Exception as e:
+                    log.warning("could not delete %s from WebDAV: %s", name, e)
 
     def _find(self, match: Callable[[dict], bool]) -> dict | None:
         return next((i for i in self._library() if match(i)), None)

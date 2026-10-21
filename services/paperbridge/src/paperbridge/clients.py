@@ -16,6 +16,15 @@ RETRY_STATUS = {429, 502, 503, 504}
 ATTEMPTS = 3
 
 
+class Rejected(RuntimeError):
+    """Zotero refused objects in a create request. `failed` maps each refused object's index (a
+    string, as Zotero sends it) to Zotero's error; the others were stored."""
+
+    def __init__(self, kind: str, failed: dict):
+        super().__init__(f"Zotero rejected {kind}: {failed}")
+        self.failed = failed
+
+
 def web_client(timeout: float = 60.0) -> httpx.Client:
     """For plain downloads from the internet (arXiv, Unpaywall, publishers)."""
     return httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=timeout, follow_redirects=True)
@@ -134,10 +143,20 @@ class Zotero(API):
         )
         self.api_url = api_url
         self.user_id = user_id
+        self._creator_types: dict[str, set[str]] = {}
 
     def key_info(self) -> dict:
         """The API key's owner and rights (GET /keys/current)."""
         return self.request("GET", f"{self.api_url}/keys/current").json()
+
+    def creator_types(self, item_type: str) -> set[str]:
+        """The creator types Zotero's schema allows for an item type (cached)."""
+        if item_type not in self._creator_types:
+            response = self.request(
+                "GET", f"{self.api_url}/itemTypeCreatorTypes", params={"itemType": item_type}
+            )
+            self._creator_types[item_type] = {t["creatorType"] for t in response.json()}
+        return self._creator_types[item_type]
 
     def top_items(self) -> list[dict]:
         """Every top-level item outside the trash.
@@ -190,7 +209,7 @@ class Zotero(API):
             headers={"Zotero-Write-Token": secrets.token_hex(16)},
         ).json()
         if result.get("failed"):
-            raise RuntimeError(f"Zotero rejected {kind}: {result['failed']}")
+            raise Rejected(kind, result["failed"])
         return [result["successful"][str(i)]["data"] for i in range(len(objects))]
 
     def update(self, path: str, version: int, fields: dict) -> int:
@@ -222,6 +241,14 @@ class WebDAV(API):
 
     def put(self, name: str, data: bytes, content_type: str) -> None:
         self.request("PUT", name, content=data, headers={"Content-Type": content_type})
+
+    def delete(self, name: str) -> None:
+        """Delete a file; one that isn't there is fine."""
+        try:
+            self.request("DELETE", name)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code != 404:
+                raise
 
 
 class TranslationServer(API):

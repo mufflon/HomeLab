@@ -909,6 +909,13 @@ both ways. Files and structure don't (see the rule at the top).
   Zotero's API allows that for WebDAV libraries.
   - The file name follows Zotero's default:
     `Author et al. - Year - Title.pdf`.
+  - If Zotero refuses the request, the attachment's `.zip` and `.prop`
+    are deleted again (0.4.4); the next run stores them under a new key.
+    Not after other errors, when the attachment may exist.
+- **Creator types** Zotero's schema doesn't allow for the item type
+  become `contributor`, which all 38 item types allow (0.4.4, via `GET
+  /itemTypeCreatorTypes`). A thesis's DOI metadata listed its
+  supervisor as an editor, and Zotero refused it on every run.
 - The bookmark's note gets `zotero://select/library/items/<KEY>` and the
   web-library link. `in-zotero` is tagged last.
 
