@@ -695,6 +695,17 @@ last-synced values serves the two-way sync (below).
 - If `state.json` is lost, every pair has a first sync again, where
   Zotero's value wins. Karakeep-side edits made since the last run would
   then be lost; restore the file from a sanoid snapshot instead.
+- **One run at a time** (0.4.3): each run takes an exclusive `flock` on
+  `paperbridge.lock` beside `STATE_PATH`. A run that finds it held logs
+  that and exits 0, doing nothing. `concurrencyPolicy: Forbid` alone
+  doesn't stop a manual `kubectl create job --from=cronjob/paperbridge`
+  from overlapping a scheduled run. The kernel drops the lock when the
+  process ends, however it ends.
+- **Karakeep calls retry 500 and 401 too** (0.4.3), 5 attempts over about
+  30 s; every Karakeep call paperbridge makes is safe to repeat. While
+  Karakeep processes an uploaded PDF, its SQLite write lock makes other
+  requests fail with `database is locked`, as a 500, or as a 401 when the
+  API-key lookup is what hit it. Other services keep 429/502/503/504.
 
 **Handoff, for each bookmark tagged `paper` but not `in-zotero`:**
 
@@ -791,6 +802,10 @@ both ways. Files and structure don't (see the rule at the top).
   - A field changed on one side is copied to the other.
   - A field changed on both sides: **Zotero wins**, since that's where
     bibliographic data gets curated.
+  - **An empty value never wins** (0.4.2): it's missing data, not an
+    edit, so the filled-in side wins instead. Karakeep blanks a PDF
+    bookmark's title while it (re)processes the file; before 0.4.2 that
+    blank was synced over the Zotero title (2026-10-21).
 - **Comments:** the Karakeep bookmark's note and one Zotero child note,
   "From Karakeep", stay in sync both ways.
   - paperbridge's own Zotero-link lines in the bookmark's note are left
@@ -926,9 +941,20 @@ rerunnable: the owner downloads papers gradually.
   repeats blindly: after a failure it re-reads Karakeep for the import ID
   first. A blind retry while Karakeep restarted made a duplicate
   (2026-10-21).
+  - 401 and 429 are retried for any method: the request never ran.
+    Karakeep 0.33.2 answers 401 whenever its API-key lookup throws, e.g.
+    on `database is locked` (a bare `catch` in
+    `createContextFromRequest`).
 - **Big imports:** batches of 25, one paperbridge run after each, with
-  the CronJob suspended meanwhile. Batches of 50 (~140 PDFs) OOMKilled
-  Karakeep five times at 3Gi; it now has 8Gi.
+  the CronJob suspended meanwhile.
+  - Batches of 50 (~140 PDFs) OOMKilled Karakeep five times at 3Gi; it
+    now has 8Gi.
+  - Karakeep's PDF worker holds SQLite's write lock while it processes
+    uploads. Other writes then fail with `database is locked`: 500s on
+    PATCH, and 401s. So paperbridge starts only once Karakeep's
+    `assetPreprocessing` and `search` workers have logged nothing for
+    45 s. Its failed bookmarks are retried by the next run, which finds
+    the Zotero item by the `Karakeep:` line in Extra: no duplicates.
 - **Deliberately not done:** deletions, moves after import (organise in
   Karakeep), replacing an imported PDF.
 - **Known gap:** an uncatalogued paper saved as two *different* files

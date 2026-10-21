@@ -22,6 +22,9 @@ def web_client(timeout: float = 60.0) -> httpx.Client:
 
 
 class API:
+    retry_status = RETRY_STATUS
+    attempts = ATTEMPTS
+
     def __init__(self, base_url: str, *, headers=None, auth=None, timeout: float = 30.0):
         self.http = httpx.Client(
             base_url=base_url,
@@ -32,16 +35,16 @@ class API:
 
     def request(self, method: str, url: str, **kwargs) -> httpx.Response:
         """Send, retrying connection errors, rate limits and gateway errors a few times."""
-        for attempt in range(1, ATTEMPTS + 1):
+        for attempt in range(1, self.attempts + 1):
             try:
                 response = self.http.request(method, url, **kwargs)
             except httpx.TransportError as e:
-                if attempt == ATTEMPTS:
+                if attempt == self.attempts:
                     raise
                 log.warning("%s %s: %s; retrying", method, url, e)
                 time.sleep(2**attempt)
                 continue
-            if response.status_code in RETRY_STATUS and attempt < ATTEMPTS:
+            if response.status_code in self.retry_status and attempt < self.attempts:
                 wait = _retry_after(response) or 2**attempt
                 log.warning("%s %s: HTTP %d; retrying in %ds", method, url, response.status_code, wait)
                 time.sleep(wait)
@@ -59,7 +62,17 @@ def _retry_after(response: httpx.Response) -> int | None:
 
 
 class Karakeep(API):
-    """Karakeep's REST API (v1), authenticated with an API key."""
+    """Karakeep's REST API (v1), authenticated with an API key.
+
+    Every call here is safe to repeat, so more errors are retried, for longer (about 30 s). While
+    Karakeep's worker processes an uploaded PDF it holds SQLite's write lock, and other requests
+    fail with 500 "database is locked", or with 401 when it's the API-key lookup that hits the lock
+    (Karakeep 0.33.2 turns any error there into "Unauthorized"). Seen while importing PDFs,
+    2026-10-21.
+    """
+
+    retry_status = RETRY_STATUS | {401, 500}
+    attempts = 5
 
     def __init__(self, url: str, api_key: str):
         super().__init__(f"{url}/api/v1", headers={"Authorization": f"Bearer {api_key}"})

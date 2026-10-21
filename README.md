@@ -146,7 +146,8 @@ tagged `paper`; paperbridge does the rest.
 | Something on your phone | Share it to the Karakeep app and tag it `paper` (away from home: over the router's VPN) | Same as above |
 | A PDF you already have (a paywalled download, an email attachment, from a colleague) | Upload the file in Karakeep (drag it into the web page, or use the app) and tag it `paper` | A new item, or the PDF filled into an item that's already there without one |
 | Just a reference (a DOI or arXiv ID in a citation) | Paste `https://doi.org/<DOI>` into Karakeep's add box and tag it `paper` | The item with metadata, plus the PDF if one is freely available |
-| Many at once, from a script | Karakeep's API: `POST /api/v1/bookmarks` with `{"type": "link", "url": …}`, then `POST /api/v1/bookmarks/<id>/tags` with `{"tags": [{"tagName": "paper"}]}`. Use an API key of its own, not paperbridge's | As the rows above |
+| A folder of PDFs you downloaded | `scripts/import_pdfs.py MANIFEST.json`: a dry run first, then `--apply --limit 25`. The manifest lists each PDF with its DOI, list and tags; rerun it as you add files, nothing is added twice | One item per paper, with metadata and your PDF, in the matching collection |
+| Many links at once, from a script | Karakeep's API: `POST /api/v1/bookmarks` with `{"type": "link", "url": …}`, then `POST /api/v1/bookmarks/<id>/tags` with `{"tags": [{"tagName": "paper"}]}`. Use an API key of its own, not paperbridge's | As the rows above |
 
 **Paywalled papers take two steps:**
 1. **Save the page** as soon as you find it. Zotero gets the item with its
@@ -267,7 +268,7 @@ point to the same Zotero item, and marking it Read archives both.
 | `CLAUDE.md` | The detailed spec and working notes. [Claude Code](https://claude.com/claude-code), the AI coding assistant this was built with, reads it at the start of every session. It has the exact versions, UIDs, gotchas and open questions. Worth reading for the "how exactly" |
 | `host/` | Idempotent scripts run once on the server with sudo (storage, MicroK8s, ZFS alerts) |
 | `k8s/` | Kubernetes manifests, one directory per area: `storage/` (ZFS-backed volumes), `ingress/` (certificates), `research/` (the apps), `monitoring/` (the watchdog) |
-| `scripts/` | Helpers run from your machine: `secrets.sh` turns `.env` into Kubernetes Secrets |
+| `scripts/` | Helpers run from your machine: `secrets.sh` turns `.env` into Kubernetes Secrets; `import_pdfs.py` uploads a folder of PDFs to Karakeep |
 | `images/` | Third-party images we build ourselves, e.g. Zotero's translation-server, because the published one is ARM-only |
 | `services/paperbridge/` | The glue service: its Python source, tests and container build |
 | `.github/workflows/` | GitHub Actions that build those images and publish them to `ghcr.io/mufflon/*` |

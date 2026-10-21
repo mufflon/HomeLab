@@ -63,6 +63,12 @@ def norm_title(title: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", t).split())
 
 
+def arxiv_id(value: str) -> str:
+    """The bare arXiv ID from an ID, `arXiv:…` or an arxiv.org link (manifests have all three)."""
+    v = re.sub(r"^\s*(https?://(www\.)?arxiv\.org/(abs|pdf)/|arxiv:)", "", value, flags=re.I).strip()
+    return re.sub(r"\.pdf$", "", v)
+
+
 def sha256(path: str) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -85,13 +91,15 @@ class Karakeep:
 
         A POST that fails this way raises Unreachable, because it may have taken effect anyway:
         blindly repeating POST /bookmarks while Karakeep restarted created a duplicate (2026-10-21).
+        401 and 429 are retried for any method: the request was turned away before it ran. Karakeep
+        answers 401 whenever its API-key lookup throws, a passing database error included (a bare
+        `catch` in createContextFromRequest, v0.33.2); that stopped an import once (2026-10-21).
         """
         if retry is None:
             retry = method in ("GET", "PUT")
         if body is not None:
             data = json.dumps(body).encode()
-        tries = 6 if retry else 1
-        for attempt in range(tries):
+        for attempt in range(6):
             if attempt:
                 time.sleep(min(4 * 2 ** (attempt - 1), 60))  # 4 s ... 60 s: about 2 min, a restart
             req = urllib.request.Request(self.base + path, method=method, data=data,
@@ -102,12 +110,18 @@ class Karakeep:
                     raw = r.read()
                     return json.loads(raw) if raw else None
             except urllib.error.HTTPError as e:
-                if e.code not in (429, 502, 503, 504):
+                if e.code in (401, 429):
+                    err, safe = f"HTTP {e.code}", True
+                elif e.code in (502, 503, 504):
+                    err, safe = f"HTTP {e.code}", retry
+                else:
                     raise SystemExit(f"{method} {path}: HTTP {e.code} {e.read()[:300]!r}")
-                err = f"HTTP {e.code}"
             except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-                err = str(getattr(e, "reason", e))
-            print(f"  {method} {path}: {err}{'; retrying' if attempt + 1 < tries else ''}", file=sys.stderr)
+                err, safe = str(getattr(e, "reason", e)), retry
+            more = safe and attempt < 5
+            print(f"  {method} {path}: {err}{'; retrying' if more else ''}", file=sys.stderr)
+            if not more:
+                break
         raise Unreachable(f"{method} {path}: {err}")
 
     def bookmarks(self) -> list[dict]:
@@ -264,9 +278,10 @@ def main() -> None:
                 print(f"  skip  {name}: identical to {seen_hashes[digest]}")
                 continue
             seen_hashes[digest] = name
-            import_id = (f"doi:{e['doi']}" if e.get("doi") else f"arxiv:{e['arxiv']}" if e.get("arxiv")
+            arxiv = arxiv_id(e.get("arxiv") or "")
+            import_id = (f"doi:{e['doi']}" if e.get("doi") else f"arxiv:{arxiv}" if arxiv
                          else f"sha256:{digest}").lower()
-            why, found = index.match(import_id, e.get("doi", ""), e.get("arxiv", ""), name, e.get("title", ""))
+            why, found = index.match(import_id, e.get("doi", ""), arxiv, name, e.get("title", ""))
             if found:
                 finished = [b for b in found if PAPER_TAG in tag_names(b)]
                 keep = finished[0] if finished else found[-1]  # newest first: [-1] is the oldest
@@ -309,7 +324,8 @@ def main() -> None:
           f"{counts['same file twice']} identical duplicates on disk, "
           f"{counts['extra bookmarks']} extra bookmarks in Karakeep")
     if stopped:
-        raise SystemExit(f"stopped, Karakeep unreachable: {stopped}\nRerun to continue: a half-done PDF is finished, not added again.")
+        hint = " (401 on every try: check the API key)" if "HTTP 401" in stopped else ""
+        raise SystemExit(f"stopped: {stopped}{hint}\nRerun to continue: a half-done PDF is finished, not added again.")
     if not args.apply:
         missing = sorted({"/".join(e["list"][:i + 1]) for e in manifest for i in range(len(e["list"]))
                           if ensure_list(kk, lists, e["list"][:i + 1], False) is None})
