@@ -285,6 +285,17 @@ service must authenticate on its own.
       down, then up again on a later run.
   - Heartbeat: the watchdog CronJob was suspended until `heartbeat` went
     down, then resumed.
+- **PDF importer: built and used** (2026-10-21). 343 PDFs went into
+  Karakeep, one list per paper under `Papers/`, and on to Zotero.
+  - Verified afterwards: every PDF has exactly one bookmark (except one
+    leftover from the blind-retry bug, untagged and in no list), list
+    counts match the manifest, Karakeep and Zotero titles all agree, no
+    empty titles.
+  - Bookmarks without a DOI or arXiv ID wait 24 h for metadata, then
+    become minimal `needs-metadata` items.
+  - Along the way: paperbridge 0.4.2–0.4.4 and Karakeep at 8Gi. The run
+    lock was seen working: a manual run during a scheduled one did
+    nothing.
 - **Outside the repo:** Jellyfin also has HEVC and AV1 encoding enabled
   (the backup is `/etc/jellyfin/encoding.xml.bak-pre-hevc-av1`).
 - An earlier design used Tailscale. It was dropped on 2026-10-15 because
