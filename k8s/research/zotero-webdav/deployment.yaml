@@ -22,7 +22,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: webdav
-          image: ghcr.io/hacdias/webdav:v5.17.1@sha256:c8d8c436816e51e5773525f901d829afe748d3516995a31a80de1f67fb0a02ca
+          image: ghcr.io/hacdias/webdav:v5.17.2@sha256:f4b20163b251eadf656e9d9953e5a4a337f6c86483622f80f10a8ef54acbcd7b
           args: [-c, /config/config.yml]
           ports:
             - {name: http, containerPort: 6065}
