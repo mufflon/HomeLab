@@ -5,6 +5,8 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: watchdog
+  annotations:
+    homelab/stale-after: 30m   # one failed run (healthchecks.io unreachable) doesn't alert; the heartbeat covers a stopped watchdog
 spec:
   schedule: "*/5 * * * *"
   timeZone: Etc/UTC

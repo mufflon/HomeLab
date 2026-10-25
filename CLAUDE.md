@@ -566,7 +566,7 @@ stock `python` image and runs as UID 10005. Its settings are in
 | Check (slug) | Fails when | How |
 |---|---|---|
 | `zfs` | a pool in `POOLS` isn't imported, or an imported pool isn't `ONLINE` (e.g. `DEGRADED`, `SUSPENDED` when the enclosure drops); or ZED sends a notification | `/proc/spl/kstat/zfs/<pool>/state` through a read-only hostPath; ZED on the host (below) |
-| `cronjobs` | a CronJob's latest finished Job failed; or it had no success within its `homelab/stale-after` annotation (paperbridge `1h`, lego `26h`), suspended or not | API, all namespaces |
+| `cronjobs` | a CronJob with a `homelab/stale-after` annotation had no success within it (paperbridge `1h`, lego `26h`, watchdog `30m`), suspended or not; a CronJob without one: its latest finished Job failed | API, all namespaces |
 | `workloads` | a Deployment's rollout is stuck (`Progressing=False`), or it is unavailable outside a rollout; a DaemonSet has fewer available pods than desired | API, all namespaces |
 | `endpoints` | Karakeep `/api/health` isn't `200`, WebDAV without a login isn't `401`, Jellyfin's `/health` (on the node, port 8096) isn't `200` | through Traefik under the public names, so DNS, ingress and certificate count too |
 | `certificate` | the certificate Traefik serves has less than `CERT_MIN_FRACTION` (0.2) of its lifetime left, or TLS fails | TLS handshake |
@@ -587,8 +587,16 @@ stock `python` image and runs as UID 10005. Its settings are in
   `RETRY_SECONDS` (60) before they count, so a pod restart or Traefik's
   few-second rollout blip doesn't alert.
 - Detected problems don't fail the watchdog's Job. Only its own errors do
-  (e.g. healthchecks.io unreachable), and the next run's `cronjobs` check
-  then reports that.
+  (e.g. healthchecks.io unreachable). The watchdog's `30m` staleness limit
+  makes one such run quiet; a watchdog that stops is the heartbeat's to
+  report.
+- **Staleness, not single failures** (2026-10-25): with a `stale-after`
+  annotation, a failed run that the next one makes good doesn't alert.
+  Before, every failed run did: about once a day, always a third-party
+  blip that the next run fixed.
+  - 2026-10-21: Zotero's API answered 503 for 45 minutes.
+  - 2026-10-22: Zotero returned one 500.
+  - 2026-10-24: healthchecks.io timed out and returned a 502.
 - The certificate threshold is a fraction because Let's Encrypt lifetimes
   are shrinking (90 days now, 45 by 2028). lego renews with a third left,
   so an alert means renewal has failed for a while; the `cronjobs` check

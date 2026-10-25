@@ -36,8 +36,9 @@ CHECKS = {
             "Pool state from the host's /proc/spl/kstat/zfs (watchdog), and ZFS events from ZED on "
             "the host (host/02-alerts.sh). hddpool's four disks share one USB enclosure."),
     "cronjobs": ("CronJobs", WEEK, DAY,
-                 "Every CronJob: its last finished run failed, or it had no successful run within "
-                 f"its {STALE_AFTER} annotation (paperbridge 1h, lego 26h)."),
+                 f"A CronJob with a {STALE_AFTER} annotation had no successful run within it "
+                 "(paperbridge 1h, lego 26h, watchdog 30m); one failed run the next one makes good "
+                 "doesn't count. A CronJob without the annotation: its last finished run failed."),
     "workloads": ("Workloads", WEEK, DAY,
                   "Every Deployment and DaemonSet has its pods available. A rollout in progress "
                   "only counts once it is stuck."),
@@ -110,11 +111,14 @@ def check_cronjobs():
         namespace, name = cronjob["metadata"]["namespace"], cronjob["metadata"]["name"]
         names.append(name)
         latest = max(runs.get((namespace, name), []), default=None)
-        if latest and latest[2]["type"] == "Failed":
+        limit = cronjob["metadata"].get("annotations", {}).get(STALE_AFTER)
+        # With a staleness limit, only that counts: a single failed run is mostly a third-party
+        # blip (Zotero's API answered 503 for 45 minutes, healthchecks.io timed out), and the next
+        # run makes it good. Each such run alerted once, about once a day (2026-10-21 to 10-24).
+        if not limit and latest and latest[2]["type"] == "Failed":
             _, job, condition = latest
             problems.append(f"{namespace}/{name}: run {job} failed "
                             f"({condition.get('reason', '?')}: {condition.get('message', '')})")
-        limit = cronjob["metadata"].get("annotations", {}).get(STALE_AFTER)
         if limit:
             last = (cronjob.get("status", {}).get("lastSuccessfulTime")
                     or cronjob["metadata"]["creationTimestamp"])
