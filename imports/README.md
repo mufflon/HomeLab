@@ -123,7 +123,7 @@ CSV files with a header row; one row per PDF, or several, which are merged.
 |---|---|---|
 | `files` | list of paths | **Required.** The CSV files, relative to `root`. |
 | `columns` | object | **Required.** Which CSV column holds which field. Only `path` is required. |
-| `group_by_theme` | object | Theme → group, looked up for the PDF's **first** theme. |
+| `group_by_theme` | object | Theme → group, looked up for the PDF's **first** theme. A first theme missing here sends the PDF to `default_group`; every run, dry runs included, names such themes so they get mapped. |
 | `horizon_tags` | object | Horizon value → tag, e.g. `{"short": "now", "long": "long-term"}`. The order is the precedence when rows disagree. |
 | `relevance_tag_from` | integer | With `3`, a PDF whose relevance is 3 or more gets the tag `relevance-3`. |
 

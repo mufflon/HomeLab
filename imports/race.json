@@ -34,7 +34,10 @@
       "fault-degradation": "Low temperature, faults & operation",
       "gis-digital-twin": "Digital twin, GIS & planning",
       "planning-design": "Digital twin, GIS & planning",
-      "other": "Digital twin, GIS & planning"
+      "other": "Digital twin, GIS & planning",
+      "numerics": "Numerics & simulation",
+      "regimes": "Calibration, state & data",
+      "digital-twin-use": "Digital twin, GIS & planning"
     },
     "horizon_tags": {"short": "now", "long": "long-term"},
     "relevance_tag_from": 3

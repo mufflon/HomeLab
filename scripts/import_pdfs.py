@@ -131,8 +131,10 @@ def from_rows(rows: list[dict], spec: dict, default_group: str) -> dict:
         tags.append(f"relevance-{floor}")
     summary = ([f"Relevance {relevance}"] if relevance is not None else []) + \
               ([f"horizon {horizon}"] if horizon else []) + facts
+    by_theme = spec.get("group_by_theme", {})
     return {
-        "group": spec.get("group_by_theme", {}).get(themes[0], default_group) if themes else default_group,
+        "group": by_theme.get(themes[0], default_group) if themes else default_group,
+        "unmapped": themes[0] if themes and themes[0] not in by_theme else None,
         "doi": first("doi"), "arxiv": arxiv_id(first("arxiv")), "title": first("title"), "tags": tags,
         "note_lines": [n for n in dict.fromkeys(notes) if n] + ([" · ".join(summary)] if summary else []),
     }
@@ -184,11 +186,13 @@ def load_collection(config_path: str, root: str | None) -> list[dict]:
     missing = sorted(rest - set(refs))
     if missing:
         print(f"note: {len(missing)} PDF(s) in no catalogue, into {default!r}: {missing}", file=sys.stderr)
-
     entries = []
+    unmapped: dict[str, int] = {}  # first themes group_by_theme doesn't know: those PDFs get the default
     for path in pdfs:
         if path in rows:
             e = from_rows(rows[path], cfg["csv"], default)
+            if e["unmapped"] and not by_file.get(os.path.basename(path)):
+                unmapped[e["unmapped"]] = unmapped.get(e["unmapped"], 0) + 1
         elif path in refs:
             e = refs[path]
             if not (by_file.get(os.path.basename(path)) or e["group"]):
@@ -206,6 +210,9 @@ def load_collection(config_path: str, root: str | None) -> list[dict]:
             "tags": e["tags"],
             "note": "\n".join(e["note_lines"] + [f"From {label}: {path}"]),
         })
+    if unmapped and cfg["csv"].get("group_by_theme"):
+        print(f"note: first themes missing from group_by_theme, so into {default!r}: "
+              + ", ".join(f"{t} ({n} PDFs)" for t, n in sorted(unmapped.items())), file=sys.stderr)
     return entries
 
 
