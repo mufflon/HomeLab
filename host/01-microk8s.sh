@@ -4,7 +4,7 @@
 set -euo pipefail
 
 CHANNEL=1.36/stable
-TRAEFIK_CHART=42.0.0                     # replaces the addon's own (39.0.8 in MicroK8s 1.36); Renovate proposes bumps
+TRAEFIK_CHART=42.2.0                     # replaces the addon's own (39.0.8 in MicroK8s 1.36); Renovate proposes bumps
 TRAEFIK_REPO=https://traefik.github.io/charts
 DEFAULT_CERT=ingress/wildcard-home-tls   # written by the lego CronJob (k8s/ingress)
 OWNER=${SUDO_USER:-mufflon}
