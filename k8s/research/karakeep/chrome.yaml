@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: chrome
-          image: ghcr.io/karakeep-app/karakeep-chrome:154.0.8037.57-r1@sha256:c51a8c8e6c3c1040a50fa0ecfd0b2fc298401b4229262636552458151f6f18fa
+          image: ghcr.io/karakeep-app/karakeep-chrome:158.0.8127.88-r2@sha256:c3c6c4c0ec25cc0a843bbf3bc92f51f6c4ba0bbf2bbcbef97854fc83cf88196d
           args:
             - --disable-gpu
             - --disable-dev-shm-usage
