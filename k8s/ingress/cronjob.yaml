@@ -30,7 +30,7 @@ spec:
               type: RuntimeDefault
           initContainers:
             - name: lego
-              image: goacme/lego:v5.5.2@sha256:1944e8c36055beec47c7de6f15202b41128be75eea0ffa257f0c14d93c5155fd
+              image: goacme/lego:v5.8.1@sha256:accb133902c2ae89f28a7e953458f0291a1a09e87538b071174be5d43411d50b
               # `run` gets a certificate, or renews it when due (lego v5).
               args:
                 - run
